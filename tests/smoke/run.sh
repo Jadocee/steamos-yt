@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+# End-to-end smoke test: installs into a throwaway HOME, launches the kiosk
+# against a local HTTPS stand-in for www.youtube.com/tv, and checks the
+# companion extension, the device identity and every exit path.
+#
+#   tests/smoke/run.sh [helium-<version>-x86_64_linux.tar.xz]
+#
+# Without an archive the latest Helium release is downloaded. Needs python3,
+# openssl and either a running display or Xvfb.
+set -Eeuo pipefail
+
+ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
+PORT=${SMOKE_PORT:-18443}
+ARCHIVE=${1:-}
+WORK=$(mktemp -d)
+HOME_DIR="$WORK/home"
+OUTPUT="$WORK/output"
+LAUNCHER="$HOME_DIR/.local/share/steamos-yt/bin/steamos-yt"
+PIDS=()
+
+cleanup() {
+    local pid
+    for pid in "${PIDS[@]}"; do
+        kill "$pid" 2>/dev/null || true
+    done
+    if [[ ${KEEP_WORK:-0} == 1 ]]; then
+        echo "kept $WORK"
+    else
+        rm -rf "$WORK"
+    fi
+}
+trap cleanup EXIT
+
+run_clean() {
+    env -i HOME="$HOME_DIR" PATH="$PATH" USER="${USER:-tester}" LANG=C.UTF-8 \
+        DISPLAY="${DISPLAY:-}" STEAMOS_YT_ALLOW_ROOT=1 NO_COLOR=1 "$@"
+}
+
+mkdir -p "$HOME_DIR" "$OUTPUT"
+echo "==> Installing into $HOME_DIR"
+install_args=(--no-steam --no-desktop-entry --no-auto-update --yes)
+[[ -n $ARCHIVE ]] && install_args+=(--helium-archive "$(readlink -f -- "$ARCHIVE")")
+run_clean "$ROOT/install.sh" "${install_args[@]}"
+
+if [[ -z ${DISPLAY:-} ]]; then
+    for display in {90..99}; do
+        [[ -e /tmp/.X11-unix/X$display ]] && continue
+        Xvfb ":$display" -screen 0 1280x800x24 -nolisten tcp >/dev/null 2>&1 &
+        PIDS+=($!)
+        export DISPLAY=":$display"
+        break
+    done
+    sleep 1
+fi
+
+openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=www.youtube.com" \
+    -addext "subjectAltName=DNS:www.youtube.com" -keyout "$WORK/key.pem" -out "$WORK/cert.pem" >/dev/null 2>&1
+python3 "$ROOT/tests/smoke/server.py" --port "$PORT" --cert "$WORK/cert.pem" --key "$WORK/key.pem" --output "$OUTPUT" >"$WORK/server.log" 2>&1 &
+PIDS+=($!)
+for _ in {1..50}; do
+    grep -q ready "$WORK/server.log" && break
+    sleep 0.1
+done
+
+browser_flags=(--no-proxy-server --ignore-certificate-errors "--host-resolver-rules=MAP www.youtube.com 127.0.0.1:$PORT")
+[[ $(id -u) == 0 ]] && browser_flags+=(--no-sandbox)
+
+stop_kiosk() {
+    local pid=$1 pattern="[-]-user-data-dir=$HOME_DIR/"
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    pkill -f "$pattern" 2>/dev/null || true
+    wait_for 10 bash -c "! pgrep -f '$pattern' >/dev/null" || true
+}
+
+wait_for() {
+    local seconds=$1
+    shift
+    local deadline=$((SECONDS + seconds))
+    until "$@"; do
+        ((SECONDS < deadline)) || return 1
+        sleep 0.25
+    done
+}
+
+failed=0
+for mode in leanback combo close; do
+    echo "==> Exit path: $mode"
+    rm -f "$OUTPUT"/*
+    run_clean "$LAUNCHER" launch "https://www.youtube.com/tv?exit=$mode" -- "${browser_flags[@]}" &
+    pid=$!
+    PIDS+=("$pid")
+    if ! wait_for 40 test -s "$OUTPUT/report.json"; then
+        echo "    FAIL no report from the page; launch log:"
+        tail -n 30 "$HOME_DIR/.local/state/steamos-yt/launch.log" || true
+        failed=1
+        stop_kiosk "$pid"
+        continue
+    fi
+    if wait_for 20 bash -c "! kill -0 $pid 2>/dev/null"; then
+        echo "    ok: kiosk closed itself"
+    else
+        echo "    FAIL kiosk did not close after the $mode exit request"
+        failed=1
+    fi
+    stop_kiosk "$pid"
+    if python3 "$ROOT/tests/smoke/check.py" "$OUTPUT" "$mode"; then
+        echo "    ok: identity, controller bridge, media checks and exit hook"
+    else
+        failed=1
+    fi
+done
+
+if ((failed)); then
+    echo "==> Smoke test FAILED"
+    exit 1
+fi
+echo "==> Smoke test passed"

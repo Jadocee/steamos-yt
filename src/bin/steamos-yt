@@ -1,0 +1,721 @@
+#!/usr/bin/env bash
+# steamos-yt: YouTube's TV interface in a Helium kiosk, integrated with Steam.
+set -Eeuo pipefail
+
+APP_HOME="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.." && pwd -P)"
+# shellcheck source=../lib/common.sh
+source "$APP_HOME/lib/common.sh"
+
+DEFAULT_NAME="YouTube"
+LOGO_POSITION="BottomLeft:42:58"
+CONFIG_FILES=(steamos-yt.conf flags.conf)
+
+usage() {
+    cat <<EOF
+SteamOS YT $STEAMOS_YT_VERSION: YouTube on TV in a Helium kiosk, integrated with Steam.
+
+Usage: steamos-yt [command] [options]
+
+Commands:
+  launch [--verbose] [URL] [-- FLAGS...]
+                              Start the kiosk (default). Extra Helium flags follow "--";
+                              --verbose prints Helium's output instead of logging it.
+  install [options]           Install or repair everything (see 'steamos-yt install --help').
+  update [--force]            Update Helium to the newest signed release.
+  rollback                    Switch back to the previously installed Helium.
+  steam add|remove|status     Manage the Steam library shortcut and artwork.
+  doctor                      Show diagnostics for troubleshooting.
+  uninstall [--purge]         Remove steamos-yt (--purge also deletes sign-in data and settings).
+  version                     Show version information.
+
+Settings: $CONFIG_DIR/steamos-yt.conf and flags.conf
+EOF
+}
+
+usage_install() {
+    cat <<EOF
+Usage: steamos-yt install [options]
+
+  --name NAME              Title shown in the Steam library (default: $DEFAULT_NAME)
+  --helium-version VER     Install a specific Helium release instead of the latest
+  --helium-archive FILE    Install Helium from a local helium-*_linux.tar.xz (and .asc)
+  --skip-verify            Do not require a valid Helium signature (not recommended)
+  --steam-user ID          Steam account for the shortcut: auto (default), all, or an ID
+  --no-steam               Do not add a Steam library shortcut
+  --no-restart-steam       Leave Steam closed after updating its library
+  --no-desktop-entry       Do not add an applications menu entry
+  --no-auto-update         Do not install the weekly Helium update timer
+  --no-helium-services     Do not opt in to Helium services (filter list and extension updates)
+  -y, --yes                Answer yes to prompts (for example closing Steam)
+  -q, --quiet              Only print warnings and errors
+EOF
+}
+
+load_config() {
+    YT_URL="https://www.youtube.com/tv"
+    YT_IDENTITY="cobalt"
+    YT_USER_AGENT=""
+    YT_CONTROLLER="1"
+    YT_EXIT_COMBO="1"
+    YT_CURSOR_HIDE_SECONDS="3"
+    YT_MAX_RESOLUTION="auto"
+    YT_BLOCK_CODECS=""
+    YT_OZONE_PLATFORM="auto"
+    YT_KIOSK="1"
+    YT_LANG=""
+    YT_KEEP_STEAM_ENV="0"
+
+    local file="$CONFIG_DIR/steamos-yt.conf" line key value
+    [[ -r $file ]] || return 0
+    while IFS= read -r line || [[ -n $line ]]; do
+        line=${line#"${line%%[![:space:]]*}"}
+        [[ -z $line || $line == \#* ]] && continue
+        if [[ ! $line =~ ^(YT_[A-Z0-9_]+)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+            warn "ignoring malformed line in $file: $line"
+            continue
+        fi
+        key=${BASH_REMATCH[1]}
+        value=${BASH_REMATCH[2]}
+        if [[ $value =~ ^\"(.*)\"[[:space:]]*(#.*)?$ || $value =~ ^\'(.*)\'[[:space:]]*(#.*)?$ ]]; then
+            value=${BASH_REMATCH[1]}
+        else
+            value=${value%%[[:space:]]#*}
+            value=${value%"${value##*[![:space:]]}"}
+        fi
+        case $key in
+            YT_URL | YT_IDENTITY | YT_USER_AGENT | YT_CONTROLLER | YT_EXIT_COMBO | YT_CURSOR_HIDE_SECONDS | \
+                YT_MAX_RESOLUTION | YT_BLOCK_CODECS | YT_OZONE_PLATFORM | YT_KIOSK | YT_LANG | YT_KEEP_STEAM_ENV)
+                printf -v "$key" '%s' "$value"
+                ;;
+            *) warn "ignoring unknown setting $key in $file" ;;
+        esac
+    done <"$file"
+}
+
+prepare_args() {
+    local -n prepared=$1
+    # shellcheck disable=SC2034
+    prepared=(
+        --identity "$YT_IDENTITY"
+        --user-agent "$YT_USER_AGENT"
+        --controller "$YT_CONTROLLER"
+        --exit-combo "$YT_EXIT_COMBO"
+        --cursor-hide "$YT_CURSOR_HIDE_SECONDS"
+        --max-resolution "$YT_MAX_RESOLUTION"
+        --block-codecs "$YT_BLOCK_CODECS"
+        --extension "$APP_HOME/extension"
+    )
+}
+
+prepare_environment() {
+    [[ $YT_KEEP_STEAM_ENV == 1 ]] && return 0
+    unset LD_PRELOAD
+    if [[ -n ${SYSTEM_LD_LIBRARY_PATH:-} ]]; then
+        export LD_LIBRARY_PATH="$SYSTEM_LD_LIBRARY_PATH"
+    else
+        unset LD_LIBRARY_PATH
+    fi
+    if [[ -n ${SYSTEM_PATH:-} ]]; then
+        export PATH="$SYSTEM_PATH"
+    fi
+}
+
+clear_stale_lock() {
+    local lock="$PROFILE_DIR/SingletonLock" target pid exe
+    [[ -L $lock ]] || return 0
+    target=$(readlink "$lock") || return 0
+    pid=${target##*-}
+    if [[ $pid =~ ^[0-9]+$ ]] && exe=$(readlink "/proc/$pid/exe" 2>/dev/null) && [[ $exe == "$HELIUM_DIR"/* ]]; then
+        return 0
+    fi
+    rm -f "$PROFILE_DIR/SingletonLock" "$PROFILE_DIR/SingletonSocket" "$PROFILE_DIR/SingletonCookie"
+}
+
+append_unique() {
+    local -n unique_list=$1
+    local item
+    for item in "${unique_list[@]}"; do
+        [[ $item == "$2" ]] && return 0
+    done
+    unique_list+=("$2")
+}
+
+remove_item() {
+    local -n pruned_list=$1
+    local kept=() item
+    for item in "${pruned_list[@]}"; do
+        [[ $item == "$2" ]] || kept+=("$item")
+    done
+    pruned_list=("${kept[@]}")
+}
+
+merge_features() {
+    local -n flags_ref=$1
+    local merged=() enabled=() disabled=() flag feature features
+    for flag in "${flags_ref[@]}"; do
+        case $flag in
+            --enable-features=* | --disable-features=*)
+                IFS=',' read -ra features <<<"${flag#*=}"
+                for feature in "${features[@]}"; do
+                    [[ -n $feature ]] || continue
+                    if [[ $flag == --enable-features=* ]]; then
+                        remove_item disabled "$feature"
+                        append_unique enabled "$feature"
+                    else
+                        remove_item enabled "$feature"
+                        append_unique disabled "$feature"
+                    fi
+                done
+                ;;
+            *) merged+=("$flag") ;;
+        esac
+    done
+    if ((${#enabled[@]})); then
+        merged+=("--enable-features=$(IFS=,; printf '%s' "${enabled[*]}")")
+    fi
+    if ((${#disabled[@]})); then
+        merged+=("--disable-features=$(IFS=,; printf '%s' "${disabled[*]}")")
+    fi
+    flags_ref=("${merged[@]}")
+}
+
+read_flag_file() {
+    local -n flag_list=$1
+    local file=$2 line
+    [[ -r $file ]] || return 0
+    while IFS= read -r line || [[ -n $line ]]; do
+        line=${line#"${line%%[![:space:]]*}"}
+        line=${line%"${line##*[![:space:]]}"}
+        [[ -z $line || $line == \#* ]] && continue
+        flag_list+=("$line")
+    done <"$file"
+}
+
+build_flags() {
+    local -n built=$1
+    local user_agent=$2
+    built=(
+        "--user-data-dir=$PROFILE_DIR"
+        "--class=steamos-yt"
+        --no-first-run
+        --no-default-browser-check
+        --hide-crash-restore-bubble
+        --password-store=basic
+        --autoplay-policy=no-user-gesture-required
+        "--load-extension=$APP_HOME/extension"
+        --disable-features=DisableLoadExtensionCommandLineSwitch
+    )
+    if [[ -n $user_agent ]]; then
+        built+=("--user-agent=$user_agent")
+    fi
+    if [[ $YT_KIOSK != 0 ]]; then
+        built+=(--kiosk)
+    fi
+    case $YT_OZONE_PLATFORM in
+        x11 | wayland) built+=("--ozone-platform=$YT_OZONE_PLATFORM") ;;
+        *)
+            if in_game_mode; then
+                built+=(--ozone-platform=x11)
+            else
+                built+=(--ozone-platform-hint=auto)
+            fi
+            ;;
+    esac
+    if [[ -n $YT_LANG ]]; then
+        built+=("--lang=$YT_LANG")
+    fi
+}
+
+cmd_launch() {
+    local url="" verbose=0 extra=() flags=() prepare=() prepared=() user_agent="" open_url="" output argument
+    while (($#)); do
+        argument=$1
+        shift
+        case $argument in
+            --)
+                extra+=("$@")
+                break
+                ;;
+            --verbose) verbose=1 ;;
+            http://* | https://*) url=$argument ;;
+            *) extra+=("$argument") ;;
+        esac
+    done
+
+    load_config
+    url=${url:-$YT_URL}
+    local wrapper="$HELIUM_DIR/current/helium-wrapper"
+    [[ -x $wrapper ]] || die "Helium is not installed; run: $LAUNCHER update"
+
+    prepare_environment
+    mkdir -p "$STATE_DIR" "$PROFILE_DIR"
+    clear_stale_lock
+    prepare_args prepare
+    if output=$(helper launch-prepare --profile "$PROFILE_DIR" --url "$url" "${prepare[@]}"); then
+        mapfile -t prepared <<<"$output"
+        user_agent=${prepared[0]:-}
+        open_url=${prepared[1]:-}
+    else
+        warn "could not prepare the companion extension; continuing with defaults"
+    fi
+    open_url=${open_url:-$url}
+
+    build_flags flags "$user_agent"
+    read_flag_file flags "$CONFIG_DIR/flags.conf"
+    flags+=("${extra[@]}")
+    merge_features flags
+
+    if ((verbose == 0)); then
+        [[ -f $STATE_DIR/launch.log ]] && mv -f "$STATE_DIR/launch.log" "$STATE_DIR/launch.log.1"
+        exec >"$STATE_DIR/launch.log" 2>&1
+    fi
+    printf '[%(%F %T)T] steamos-yt %s launching Helium %s for %s\n' -1 "$STEAMOS_YT_VERSION" \
+        "$(helium_current_version || echo '?')" "$url"
+    printf '  %q\n' "$wrapper" "${flags[@]}"
+    exec "$wrapper" "${flags[@]}" "$open_url"
+}
+
+conffile_install() {
+    local name=$1 default_file="$APP_HOME/share/config/$1" user_file="$CONFIG_DIR/$1"
+    local stamp="$CONFIG_DIR/.$1.sha256" current shipped recorded=""
+    shipped=$(sha256sum "$default_file" | cut -d' ' -f1)
+    if [[ -f $stamp ]]; then
+        recorded=$(<"$stamp")
+    fi
+    if [[ -f $user_file ]]; then
+        current=$(sha256sum "$user_file" | cut -d' ' -f1)
+        if [[ $current == "$shipped" ]]; then
+            rm -f "$user_file.default"
+        elif [[ $current == "$recorded" ]]; then
+            cp -f "$default_file" "$user_file"
+            rm -f "$user_file.default"
+            info "Updated $user_file to the new defaults"
+        else
+            cp -f "$default_file" "$user_file.default"
+            info "Kept your $name; the new defaults are in $user_file.default"
+        fi
+    else
+        cp "$default_file" "$user_file"
+    fi
+    printf '%s\n' "$shipped" >"$stamp"
+}
+
+escape_sed() {
+    printf '%s' "$1" | sed -e 's/[\\|&]/\\&/g'
+}
+
+render_template() {
+    local template=$1 destination=$2 name=$3
+    sed -e "s|@LAUNCHER@|$(escape_sed "$LAUNCHER")|g" \
+        -e "s|@APP_HOME@|$(escape_sed "$APP_HOME")|g" \
+        -e "s|@NAME@|$(escape_sed "$name")|g" \
+        "$template" >"$destination.tmp"
+    mv -f "$destination.tmp" "$destination"
+}
+
+install_helium() {
+    local version=$1 archive=$2 skip_verify=$3 current=""
+    current=$(helium_current_version) || current=""
+    log "Installing Helium"
+    if [[ -n $archive ]]; then
+        [[ -f $archive ]] || die "Helium archive not found: $archive"
+        archive=$(readlink -f -- "$archive")
+        version=$(basename -- "$archive")
+        version=${version#helium-}
+        version=${version%%-*}
+        valid_version "$version" || die "cannot tell the Helium version from $(basename -- "$archive")"
+    else
+        if [[ -z $version ]]; then
+            version=$(helium_latest_version) || die "could not find the latest Helium release; check your internet connection"
+        fi
+        valid_version "$version" || die "invalid Helium version: $version"
+        if [[ $version == "$current" ]]; then
+            ok "Helium $version is already installed"
+            return 0
+        fi
+        archive=$(helium_fetch "$version")
+    fi
+    helium_unpack "$archive" "$version" "$skip_verify"
+    helium_activate "$version"
+    helium_prune
+    helium_clean_cache
+    ok "Helium $version is ready"
+}
+
+install_desktop_entry() {
+    local name=$1
+    mkdir -p "$APPLICATIONS_DIR"
+    render_template "$APP_HOME/share/desktop/steamos-yt.desktop" "$DESKTOP_FILE" "$name"
+    chmod 0644 "$DESKTOP_FILE"
+    if have update-desktop-database; then
+        update-desktop-database -q "$APPLICATIONS_DIR" >/dev/null 2>&1 || true
+    fi
+    ok "Added \"$name\" to the applications menu"
+}
+
+install_update_timer() {
+    if ! have systemctl; then
+        warn "systemd is not available, so Helium will not update automatically; run 'steamos-yt update' now and then"
+        return 0
+    fi
+    mkdir -p "$SYSTEMD_USER_DIR"
+    render_template "$APP_HOME/share/systemd/$UPDATE_UNIT.service" "$SYSTEMD_USER_DIR/$UPDATE_UNIT.service" ""
+    cp -f "$APP_HOME/share/systemd/$UPDATE_UNIT.timer" "$SYSTEMD_USER_DIR/$UPDATE_UNIT.timer"
+    if systemctl --user daemon-reload >/dev/null 2>&1 && systemctl --user enable --now "$UPDATE_UNIT.timer" >/dev/null 2>&1; then
+        ok "Enabled weekly Helium updates ($UPDATE_UNIT.timer)"
+    else
+        warn "could not enable $UPDATE_UNIT.timer (no systemd user session?); run 'steamos-yt update' now and then"
+    fi
+}
+
+remove_update_timer() {
+    if have systemctl; then
+        systemctl --user disable --now "$UPDATE_UNIT.timer" >/dev/null 2>&1 || true
+    fi
+    rm -f "$SYSTEMD_USER_DIR/$UPDATE_UNIT.service" "$SYSTEMD_USER_DIR/$UPDATE_UNIT.timer"
+    if have systemctl; then
+        systemctl --user daemon-reload >/dev/null 2>&1 || true
+    fi
+}
+
+report_lines() {
+    local line
+    while IFS= read -r line; do
+        [[ -n $line ]] && ok "$line"
+    done <<<"$1"
+}
+
+steam_add() {
+    local name=$1 rename=$2 user=$3 restart=$4 root output status
+    log "Adding \"$name\" to your Steam library"
+    if ! root=$(helper steam-root 2>/dev/null); then
+        warn "Steam was not found; sign in to Steam once, then run: $LAUNCHER steam add"
+        return 0
+    fi
+    steam_stop
+    local args=(shortcut-add --exe "$LAUNCHER" --start-dir "$APP_HOME" --name "$name"
+        --artwork-dir "$APP_HOME/artwork" --logo-position "$LOGO_POSITION" --user "$user" --steam-root "$root")
+    if ((rename)); then
+        args+=(--rename)
+    fi
+    if output=$(helper "${args[@]}"); then
+        report_lines "$output"
+    else
+        status=$?
+        ((restart)) && steam_restart
+        ((status == 3)) && {
+            warn "no Steam account found; sign in to Steam once, then run: $LAUNCHER steam add"
+            return 0
+        }
+        die "could not update the Steam library"
+    fi
+    if ((restart)); then
+        steam_restart
+    fi
+}
+
+steam_remove() {
+    local user=$1 restart=$2 root output
+    if ! root=$(helper steam-root 2>/dev/null); then
+        info "Steam was not found; nothing to remove"
+        return 0
+    fi
+    if ! helper shortcut-status --exe "$LAUNCHER" --user "$user" --steam-root "$root" >/dev/null 2>&1; then
+        info "No Steam shortcut to remove"
+        return 0
+    fi
+    steam_stop
+    output=$(helper shortcut-remove --exe "$LAUNCHER" --user "$user" --steam-root "$root") ||
+        die "could not update the Steam library"
+    report_lines "$output"
+    if ((restart)); then
+        steam_restart
+    fi
+}
+
+cmd_install() {
+    local name=$DEFAULT_NAME rename=0 helium_version="" helium_archive="" skip_verify=0 steam_user=auto
+    local add_steam=1 desktop=1 auto_update=1 services=1 restart=1 prepare=() seed=()
+    while (($#)); do
+        case $1 in
+            --name)
+                name=${2:?--name needs a value}
+                rename=1
+                shift
+                ;;
+            --helium-version)
+                helium_version=${2:?--helium-version needs a value}
+                shift
+                ;;
+            --helium-archive)
+                helium_archive=${2:?--helium-archive needs a value}
+                shift
+                ;;
+            --steam-user)
+                steam_user=${2:?--steam-user needs a value}
+                shift
+                ;;
+            --skip-verify) skip_verify=1 ;;
+            --no-steam) add_steam=0 ;;
+            --no-restart-steam) restart=0 ;;
+            --no-desktop-entry) desktop=0 ;;
+            --no-auto-update) auto_update=0 ;;
+            --no-helium-services) services=0 ;;
+            -y | --yes) ASSUME_YES=1 ;;
+            -q | --quiet) QUIET=1 ;;
+            -h | --help)
+                usage_install
+                return 0
+                ;;
+            *) die "unknown install option: $1 (see 'steamos-yt install --help')" ;;
+        esac
+        shift
+    done
+    [[ -n $name && $name != *$'\n'* ]] || die "invalid --name"
+
+    refuse_root
+    require_commands curl tar xz python3 sha256sum sed find sort
+    helium_arch >/dev/null || die "unsupported CPU architecture: $(uname -m)"
+    python3 -c 'import sys; sys.exit(sys.version_info < (3, 8))' || die "Python 3.8 or newer is required"
+    is_steamos || warn "this does not look like SteamOS; continuing anyway"
+
+    log "Installing SteamOS YT $STEAMOS_YT_VERSION into $APP_HOME"
+    mkdir -p "$APP_HOME" "$CONFIG_DIR" "$CACHE_DIR" "$STATE_DIR" "$PROFILE_DIR"
+    install_helium "$helium_version" "$helium_archive" "$skip_verify"
+
+    log "Configuring the kiosk"
+    local file
+    for file in "${CONFIG_FILES[@]}"; do
+        conffile_install "$file"
+    done
+    load_config
+    seed=(profile-seed --profile "$PROFILE_DIR")
+    if ((services == 0)); then
+        seed+=(--no-services)
+    fi
+    helper "${seed[@]}" >/dev/null
+    if ((services)); then
+        ok "Prepared the Helium profile (Helium services on; reinstall with --no-helium-services to opt out)"
+    else
+        ok "Prepared the Helium profile (Helium services off)"
+    fi
+    prepare_args prepare
+    helper launch-prepare "${prepare[@]}" >/dev/null
+    ok "Configured the companion extension"
+
+    if ((desktop)); then
+        install_desktop_entry "$name"
+    fi
+    if ((auto_update)); then
+        install_update_timer
+    else
+        remove_update_timer
+    fi
+    if ((add_steam)); then
+        steam_add "$name" "$rename" "$steam_user" "$restart"
+    fi
+
+    log "Done"
+    info "Steam:   Library → Non-Steam → $name (works in Game Mode and Desktop Mode)"
+    info "Desktop: applications menu → $name, or run $LAUNCHER"
+    info "Pad:     D-pad/stick move · A select · B back · hold View + Menu to exit"
+    info "Tweaks:  $CONFIG_DIR/steamos-yt.conf and flags.conf"
+}
+
+cmd_update() {
+    local force=0 version="" current="" archive
+    while (($#)); do
+        case $1 in
+            --force) force=1 ;;
+            --version)
+                version=${2:?--version needs a value}
+                shift
+                ;;
+            -q | --quiet) QUIET=1 ;;
+            *) die "unknown update option: $1" ;;
+        esac
+        shift
+    done
+    refuse_root
+    require_commands curl tar xz python3
+    current=$(helium_current_version) || current=""
+    if [[ -z $version ]]; then
+        version=$(helium_latest_version) || die "could not find the latest Helium release; check your internet connection"
+    fi
+    valid_version "$version" || die "invalid Helium version: $version"
+    if [[ $version == "$current" && $force == 0 ]]; then
+        ok "Helium $current is up to date"
+        return 0
+    fi
+    log "Updating Helium ${current:-(not installed)} → $version"
+    archive=$(helium_fetch "$version")
+    helium_unpack "$archive" "$version" 0
+    helium_activate "$version"
+    helium_prune
+    helium_clean_cache
+    ok "Helium $version is ready; it will be used the next time YouTube starts"
+}
+
+installed_versions() {
+    local directory name
+    while IFS= read -r directory; do
+        name=$(basename "$directory")
+        if valid_version "$name" && [[ -x $directory/helium ]]; then
+            printf '%s\n' "$name"
+        fi
+    done < <(find "$HELIUM_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' 2>/dev/null | sort -rn | cut -d' ' -f2-)
+}
+
+cmd_rollback() {
+    local current previous="" version
+    current=$(helium_current_version) || die "Helium is not installed"
+    while IFS= read -r version; do
+        if [[ $version != "$current" ]]; then
+            previous=$version
+            break
+        fi
+    done < <(installed_versions)
+    [[ -n $previous ]] || die "no other Helium version is installed"
+    helium_activate "$previous"
+    ok "Switched Helium $current → $previous"
+    if have systemctl && systemctl --user is-enabled "$UPDATE_UNIT.timer" >/dev/null 2>&1; then
+        warn "the weekly update will move to the newest release again; pause it with: systemctl --user disable --now $UPDATE_UNIT.timer"
+    fi
+}
+
+cmd_steam() {
+    local action=${1:-status} name=$DEFAULT_NAME rename=0 user="" restart=1 root
+    (($#)) && shift
+    while (($#)); do
+        case $1 in
+            --name)
+                name=${2:?--name needs a value}
+                rename=1
+                shift
+                ;;
+            --user)
+                user=${2:?--user needs a value}
+                shift
+                ;;
+            --no-restart) restart=0 ;;
+            -y | --yes) ASSUME_YES=1 ;;
+            *) die "unknown steam option: $1" ;;
+        esac
+        shift
+    done
+    refuse_root
+    case $action in
+        add) steam_add "$name" "$rename" "${user:-auto}" "$restart" ;;
+        remove) steam_remove "${user:-all}" "$restart" ;;
+        status)
+            root=$(helper steam-root 2>/dev/null) || die "Steam was not found"
+            helper shortcut-status --exe "$LAUNCHER" --user "${user:-all}" --steam-root "$root" ||
+                die "no Steam shortcut found; add one with: $LAUNCHER steam add"
+            ;;
+        *) die "unknown steam action: $action (use add, remove or status)" ;;
+    esac
+}
+
+cmd_uninstall() {
+    local purge=0 restart=1
+    while (($#)); do
+        case $1 in
+            --purge) purge=1 ;;
+            --no-restart) restart=0 ;;
+            -y | --yes) ASSUME_YES=1 ;;
+            *) die "unknown uninstall option: $1" ;;
+        esac
+        shift
+    done
+    refuse_root
+    [[ $APP_HOME == */steamos-yt && -f $APP_HOME/lib/common.sh ]] || die "refusing to remove unexpected directory $APP_HOME"
+    if ((purge)); then
+        confirm "Remove SteamOS YT, its settings and your YouTube sign-in data?" n || die "cancelled"
+    else
+        confirm "Remove SteamOS YT? (your YouTube sign-in is kept)" y || die "cancelled"
+    fi
+
+    log "Removing SteamOS YT"
+    steam_remove all 0
+    remove_update_timer
+    rm -f "$DESKTOP_FILE"
+    if have update-desktop-database; then
+        update-desktop-database -q "$APPLICATIONS_DIR" >/dev/null 2>&1 || true
+    fi
+    rm -rf "$CACHE_DIR"
+    if ((purge)); then
+        rm -rf "$APP_HOME" "$CONFIG_DIR" "$STATE_DIR"
+        ok "Removed the app, settings and profile"
+    else
+        find "$APP_HOME" -mindepth 1 -maxdepth 1 ! -name profile -exec rm -rf {} +
+        ok "Removed the app; kept your profile in $PROFILE_DIR and settings in $CONFIG_DIR"
+    fi
+    if ((restart)); then
+        steam_restart
+    fi
+}
+
+cmd_doctor() {
+    local version root helium_version os timer
+    load_config
+    os=$(. /etc/os-release 2>/dev/null && printf '%s' "${PRETTY_NAME:-unknown}") || os="unknown"
+    printf '%sSteamOS YT %s%s\n' "$C_BOLD" "$STEAMOS_YT_VERSION" "$C_RESET"
+    printf '  %-12s %s\n' "System" "$os ($(uname -m), kernel $(uname -r))"
+    printf '  %-12s %s\n' "Session" "$(in_game_mode && echo 'Game Mode (gamescope)' || echo "${XDG_SESSION_TYPE:-unknown} desktop")"
+    printf '  %-12s %s\n' "App" "$APP_HOME"
+    printf '  %-12s %s\n' "Settings" "$CONFIG_DIR"
+    printf '  %-12s %s\n' "Profile" "$PROFILE_DIR ($(du -sh "$PROFILE_DIR" 2>/dev/null | cut -f1 || echo 'empty'))"
+    printf '  %-12s %s\n' "Python" "$(python3 --version 2>&1)"
+    if helium_version=$(helium_current_version); then
+        version=$("$HELIUM_DIR/current/helium" --version 2>/dev/null) || version="$helium_version (the binary did not run)"
+        printf '  %-12s %s\n' "Helium" "$version"
+    else
+        printf '  %-12s %s\n' "Helium" "not installed"
+    fi
+    printf '  %-12s %s\n' "Installed" "$(installed_versions | paste -sd' ' - || true)"
+    printf '  %-12s %s\n' "User agent" "$(helper identity --identity "$YT_IDENTITY" --user-agent "$YT_USER_AGENT" |
+        python3 -c 'import json, sys; print(json.load(sys.stdin)["user_agent"] or "(Helium default)")' 2>/dev/null || echo '?')"
+    if root=$(helper steam-root 2>/dev/null); then
+        printf '  %-12s %s\n' "Steam" "$root ($(steam_running && echo running || echo 'not running'))"
+        helper shortcut-status --exe "$LAUNCHER" --user all --steam-root "$root" 2>/dev/null | sed 's/^/               /' ||
+            printf '  %-12s %s\n' "" "no shortcut yet (run: steamos-yt steam add)"
+    else
+        printf '  %-12s %s\n' "Steam" "not found"
+    fi
+    if have systemctl; then
+        timer=$(systemctl --user is-enabled "$UPDATE_UNIT.timer" 2>/dev/null) || true
+        printf '  %-12s %s\n' "Updates" "weekly timer ${timer:-not installed}"
+    fi
+    if have vainfo; then
+        printf '  %-12s %s\n' "VA-API" "$(vainfo 2>/dev/null | grep -ciE 'VAProfile(VP9|AV1|H264)' || echo 0) decode profiles (VP9/AV1/H.264)"
+    fi
+    if [[ -f $STATE_DIR/launch.log ]]; then
+        printf '\n%sLast launch log%s (%s):\n' "$C_BOLD" "$C_RESET" "$STATE_DIR/launch.log"
+        tail -n 15 "$STATE_DIR/launch.log"
+    fi
+}
+
+cmd_version() {
+    printf 'steamos-yt %s\n' "$STEAMOS_YT_VERSION"
+    printf 'helium %s\n' "$(helium_current_version || echo 'not installed')"
+}
+
+main() {
+    local command=${1:-launch}
+    case $command in
+        launch)
+            shift
+            cmd_launch "$@"
+            ;;
+        install | update | rollback | steam | uninstall | doctor)
+            shift
+            "cmd_$command" "$@"
+            ;;
+        version | --version | -V) cmd_version ;;
+        help | --help | -h) usage ;;
+        -* | http://* | https://*) cmd_launch "$@" ;;
+        *) die "unknown command: $command (see 'steamos-yt --help')" ;;
+    esac
+}
+
+main "$@"

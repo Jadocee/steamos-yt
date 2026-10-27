@@ -87,7 +87,8 @@ def main() -> int:
     if expected_cookie != "*":
         cookies = dict(part.strip().split("=", 1) for part in page_headers.get("cookie", "").split(";") if "=" in part)
         actual = cookies.get("probe", "-")
-        expect(actual == expected_cookie, f"profile cookie: expected {expected_cookie!r}, got {actual!r}")
+        loads = (output / "tv-requests.log").read_text().splitlines()
+        expect(actual == expected_cookie, f"profile cookie: expected {expected_cookie!r}, got {actual!r} (TV page requests: {loads})")
 
     if mode == "leanback":
         hook = json.loads((output / "hook.json").read_text())

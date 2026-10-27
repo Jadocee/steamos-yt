@@ -333,7 +333,11 @@ class Handler(BaseHTTPRequestHandler):
             self._log_api(url)
             return self._send(200, PIXEL, "image/png")
         if url.path.startswith("/tv"):
-            (self.output / "page-headers.json").write_text(json.dumps(self._headers(), indent=2))
+            with (self.output / "tv-requests.log").open("a") as log:
+                log.write(f"{self.headers.get('Cache-Control', '-')} {self.path}\n")
+            headers = self.output / "page-headers.json"
+            if not headers.exists():
+                headers.write_text(json.dumps(self._headers(), indent=2))
             extra = {"Content-Security-Policy": "img-src 'self' https://i.ytimg.com; connect-src 'self'"}
             if query.get("probe"):
                 extra["Set-Cookie"] = f"probe={query['probe'][0]}; Path=/; Max-Age=3600; SameSite=Lax"

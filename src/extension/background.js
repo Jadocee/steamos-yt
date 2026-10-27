@@ -5,10 +5,25 @@ importScripts('api.js');
 const TV_URL = /^https:\/\/www\.youtube\.com\/tv(?:[/?#]|$)/;
 const SPLASH_MARKER = 'steamos-yt-splash';
 const RULES_TIMEOUT_MS = 4000;
+const SPLASH_RESEND_MS = 10000;
 
 const urlOf = (tab) => (tab && (tab.url || tab.pendingUrl)) || '';
 const isTv = (tab) => TV_URL.test(urlOf(tab));
-const isSplash = (tab) => urlOf(tab).startsWith('data:text/html') && urlOf(tab).includes(SPLASH_MARKER);
+const isSplashUrl = (url) => url.startsWith('data:text/html') && url.includes(SPLASH_MARKER);
+const isSplash = (tab) => isSplashUrl(urlOf(tab));
+const sentFromSplash = new Map();
+
+/**
+ * The tab shows the boot screen and nothing has sent it on yet. Several events
+ * can ask to leave the boot screen at start-up, and a tab keeps reporting the
+ * boot screen until the next page commits, so a tab is sent on only once.
+ */
+function waitingOnSplash(tab) {
+  if (!isSplash(tab) || (tab.pendingUrl && !isSplashUrl(tab.pendingUrl))) {
+    return false;
+  }
+  return Date.now() - (sentFromSplash.get(tab.id) ?? 0) > SPLASH_RESEND_MS;
+}
 
 let configLoad = null;
 
@@ -55,12 +70,20 @@ function leaveSplash() {
     if (!config.targetUrl) {
       return;
     }
-    const splashTabs = (await chrome.tabs.query({})).filter(isSplash);
+    const splashTabs = (await chrome.tabs.query({})).filter(waitingOnSplash);
     if (splashTabs.length === 0) {
       return;
     }
     await rulesReady(config.targetUrl, config);
-    await Promise.all(splashTabs.map((tab) => chrome.tabs.update(tab.id, { url: config.targetUrl })));
+    await Promise.all(
+      splashTabs.map(async (tab) => {
+        const current = await chrome.tabs.get(tab.id).catch(() => null);
+        if (current && waitingOnSplash(current)) {
+          sentFromSplash.set(tab.id, Date.now());
+          await chrome.tabs.update(tab.id, { url: config.targetUrl });
+        }
+      }),
+    );
   })()
     .catch((error) => console.warn('steamos-yt: could not leave the boot screen', error))
     .finally(() => {

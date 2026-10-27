@@ -1,6 +1,6 @@
 'use strict';
 
-importScripts('config.js');
+importScripts('config.js', 'api.js');
 
 const config = globalThis.__STEAMOS_YT_CONFIG__ || {};
 const TV_URL = /^https:\/\/www\.youtube\.com\/tv(?:[/?#]|$)/;
@@ -12,7 +12,7 @@ const isTv = (tab) => TV_URL.test(urlOf(tab));
 const isSplash = (tab) => urlOf(tab).startsWith('data:text/html') && urlOf(tab).includes(SPLASH_MARKER);
 
 async function rulesReady(url) {
-  if (!config.identity) {
+  if (!config.headerRules) {
     return;
   }
   const deadline = Date.now() + RULES_TIMEOUT_MS;
@@ -74,10 +74,33 @@ async function guardPopup(tab) {
   }
 }
 
-chrome.runtime.onMessage.addListener((message, sender) => {
-  if (message?.type === 'exit' && isTv(sender.tab)) {
-    closeKiosk().catch((error) => console.warn('steamos-yt: could not close the kiosk', error));
+function answerApi(message, sendResponse) {
+  const api = globalThis.steamosYtApi;
+  if (!Object.hasOwn(api, message.method)) {
+    sendResponse({ error: `unknown method ${message.method}` });
+    return false;
   }
+  Promise.resolve()
+    .then(() => api[message.method](message.params || {}))
+    .then(
+      (result) => sendResponse({ result }),
+      (error) => sendResponse({ error: String(error?.message || error) }),
+    );
+  return true;
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!isTv(sender.tab)) {
+    return false;
+  }
+  if (message?.type === 'exit') {
+    closeKiosk().catch((error) => console.warn('steamos-yt: could not close the kiosk', error));
+    return false;
+  }
+  if (message?.type === 'api') {
+    return answerApi(message, sendResponse);
+  }
+  return false;
 });
 
 chrome.tabs.onCreated.addListener((tab) => {

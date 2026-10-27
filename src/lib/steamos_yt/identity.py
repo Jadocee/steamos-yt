@@ -27,6 +27,7 @@ STARBOARD_API = 18
 BRAND = "SteamOSYT"
 APP_ID = "io.github.jadocee.SteamOSYT"
 
+TV_DOCUMENT_REGEX = r"^https://www\.youtube\.com/tv(?:[/?#]|$)"
 GOOGLE_DOMAINS = [
     "youtube.com",
     "youtube-nocookie.com",
@@ -66,6 +67,18 @@ RESOLUTIONS = {
     "8k": "7680x4320",
 }
 CODECS = ("av1", "vp9", "vp8", "h264")
+SPONSORBLOCK_CATEGORIES = (
+    "sponsor",
+    "selfpromo",
+    "interaction",
+    "intro",
+    "outro",
+    "preview",
+    "hook",
+    "filler",
+    "music_offtopic",
+)
+DEFAULT_SPONSORBLOCK_CATEGORIES = ("sponsor", "selfpromo", "interaction")
 
 _ARCHITECTURES = {
     "x86_64": ("x86_64", "x8664", "x86", "64"),
@@ -117,6 +130,11 @@ class PageSettings:
     max_resolution: str = "auto"
     block_codecs: List[str] = field(default_factory=list)
     exit_combo: bool = True
+    sponsorblock: bool = True
+    sponsorblock_categories: List[str] = field(default_factory=lambda: list(DEFAULT_SPONSORBLOCK_CATEGORIES))
+    dearrow: bool = True
+    dearrow_thumbnails: bool = True
+    return_dislikes: bool = True
 
 
 def cobalt_identity(
@@ -139,22 +157,43 @@ def cobalt_identity(
     return Identity(user_agent, BRAND, COBALT_VERSION.split(".")[0], full_version, "Starboard", architecture, bitness)
 
 
-def dnr_rules(identity: Optional[Identity]) -> List[dict]:
-    """declarativeNetRequest rules that align Client Hints with ``identity``."""
-    if identity is None:
-        return []
-    headers = [
-        {"header": name, "operation": "set", "value": value}
-        for name, value in identity.client_hints().items()
-    ]
-    return [
-        {
-            "id": 1,
-            "priority": 1,
-            "action": {"type": "modifyHeaders", "requestHeaders": headers},
-            "condition": {"requestDomains": GOOGLE_DOMAINS, "resourceTypes": RESOURCE_TYPES},
-        }
-    ]
+def dnr_rules(identity: Optional[Identity], settings: Optional["PageSettings"] = None) -> List[dict]:
+    """declarativeNetRequest rules for the kiosk.
+
+    Rule 1 aligns Client Hints with ``identity``. Rule 2 drops the TV page's
+    Content Security Policy, whose ``img-src`` list would otherwise block
+    DeArrow thumbnails; it only exists while DeArrow thumbnails are enabled.
+    """
+    rules = []
+    if identity is not None:
+        headers = [
+            {"header": name, "operation": "set", "value": value}
+            for name, value in identity.client_hints().items()
+        ]
+        rules.append(
+            {
+                "id": 1,
+                "priority": 1,
+                "action": {"type": "modifyHeaders", "requestHeaders": headers},
+                "condition": {"requestDomains": GOOGLE_DOMAINS, "resourceTypes": RESOURCE_TYPES},
+            }
+        )
+    if settings is not None and settings.dearrow and settings.dearrow_thumbnails:
+        rules.append(
+            {
+                "id": 2,
+                "priority": 1,
+                "action": {
+                    "type": "modifyHeaders",
+                    "responseHeaders": [
+                        {"header": "content-security-policy", "operation": "remove"},
+                        {"header": "content-security-policy-report-only", "operation": "remove"},
+                    ],
+                },
+                "condition": {"regexFilter": TV_DOCUMENT_REGEX, "resourceTypes": RESOURCE_TYPES},
+            }
+        )
+    return rules
 
 
 def normalise_resolution(value: Optional[str]) -> str:
@@ -166,6 +205,17 @@ def normalise_resolution(value: Optional[str]) -> str:
     if re.fullmatch(r"[1-9]\d{2,4}x[1-9]\d{2,4}", value):
         return value
     raise ValueError(f"unsupported resolution {value!r}; use auto, screen, 720p, 1080p, 1440p, 2160p or WIDTHxHEIGHT")
+
+
+def normalise_sponsorblock_categories(values: List[str]) -> List[str]:
+    categories = list(dict.fromkeys(value.strip().lower() for value in values if value.strip()))
+    unknown = [category for category in categories if category not in SPONSORBLOCK_CATEGORIES]
+    if unknown:
+        raise ValueError(
+            f"unknown SponsorBlock categor{'y' if len(unknown) == 1 else 'ies'} {', '.join(unknown)}; "
+            f"choose from {', '.join(SPONSORBLOCK_CATEGORIES)}"
+        )
+    return categories
 
 
 def normalise_codecs(values: List[str]) -> List[str]:
@@ -206,6 +256,12 @@ def page_config(identity: Optional[Identity], settings: PageSettings, target_url
         "maxResolution": normalise_resolution(settings.max_resolution),
         "blockCodecs": normalise_codecs(settings.block_codecs),
         "exitCombo": bool(settings.exit_combo),
+        "sponsorBlock": bool(settings.sponsorblock),
+        "sponsorBlockCategories": normalise_sponsorblock_categories(settings.sponsorblock_categories),
+        "deArrow": bool(settings.dearrow),
+        "deArrowThumbnails": bool(settings.dearrow and settings.dearrow_thumbnails),
+        "returnDislikes": bool(settings.return_dislikes),
+        "headerRules": bool(dnr_rules(identity, settings)),
         "identity": identity.to_page() if identity else None,
     }
 
@@ -234,4 +290,4 @@ def write_extension_config(
     config = json.dumps(page_config(identity, settings, target_url), indent=2)
     script = f"globalThis.__STEAMOS_YT_CONFIG__ = Object.freeze({config});\n"
     atomic_write_bytes(extension_dir / "config.js", script.encode("utf-8"))
-    atomic_write_json(extension_dir / "rules.json", dnr_rules(identity))
+    atomic_write_json(extension_dir / "rules.json", dnr_rules(identity, settings))

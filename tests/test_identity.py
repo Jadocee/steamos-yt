@@ -42,6 +42,21 @@ class IdentityTests(unittest.TestCase):
         headers = {item["header"]: item for item in rule["action"]["requestHeaders"]}
         self.assertEqual(headers["sec-ch-ua-platform"]["operation"], "set")
 
+    def test_csp_rule_follows_dearrow_thumbnails(self):
+        ident = identity.cobalt_identity(machine="x86_64")
+        [_, csp] = identity.dnr_rules(ident, identity.PageSettings())
+        headers = {item["header"]: item["operation"] for item in csp["action"]["responseHeaders"]}
+        self.assertEqual(headers, {"content-security-policy": "remove", "content-security-policy-report-only": "remove"})
+        pattern = re.compile(csp["condition"]["regexFilter"])
+        self.assertTrue(pattern.match("https://www.youtube.com/tv"))
+        self.assertTrue(pattern.match("https://www.youtube.com/tv?env=1#/watch?v=x"))
+        self.assertFalse(pattern.match("https://www.youtube.com/tv_static/app.js"))
+        self.assertFalse(pattern.match("https://www.youtube.com/watch?v=x"))
+        for settings in (identity.PageSettings(dearrow_thumbnails=False), identity.PageSettings(dearrow=False)):
+            self.assertEqual([rule["id"] for rule in identity.dnr_rules(ident, settings)], [1])
+        self.assertFalse(identity.page_config(None, identity.PageSettings(dearrow=False))["headerRules"])
+        self.assertFalse(identity.page_config(None, identity.PageSettings(dearrow=False))["deArrowThumbnails"])
+
     def test_resolution_and_codec_normalisation(self):
         self.assertEqual(identity.normalise_resolution("1080P"), "1920x1080")
         self.assertEqual(identity.normalise_resolution(" screen "), "screen")
@@ -53,6 +68,21 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual(identity.normalise_codecs(["VP9", " av1", "av1"]), ["av1", "vp9"])
         with self.assertRaises(ValueError):
             identity.normalise_codecs(["hevc"])
+
+    def test_sponsorblock_categories(self):
+        self.assertEqual(
+            identity.normalise_sponsorblock_categories(["Sponsor", " intro", "sponsor", ""]),
+            ["sponsor", "intro"],
+        )
+        with self.assertRaises(ValueError):
+            identity.normalise_sponsorblock_categories(["sponsor", "ads"])
+
+    def test_page_config_enables_community_services_by_default(self):
+        config = identity.page_config(None, identity.PageSettings())
+        self.assertTrue(config["sponsorBlock"])
+        self.assertEqual(config["sponsorBlockCategories"], ["sponsor", "selfpromo", "interaction"])
+        self.assertTrue(config["deArrow"])
+        self.assertTrue(config["returnDislikes"])
 
     def test_write_extension_config(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -68,7 +98,8 @@ class IdentityTests(unittest.TestCase):
             self.assertEqual(config["maxResolution"], "3840x2160")
             self.assertEqual(config["identity"]["platform"], "Starboard")
             rules = json.loads((directory / "rules.json").read_text())
-            self.assertEqual(len(rules), 1)
+            self.assertEqual([rule["id"] for rule in rules], [1, 2])
+            self.assertTrue(config["headerRules"])
 
 
 class LaunchPrepareTests(unittest.TestCase):
@@ -107,20 +138,39 @@ class LaunchPrepareTests(unittest.TestCase):
             config = json.loads(re.search(r"Object\.freeze\((.*)\);", (Path(tmp) / "config.js").read_text(), re.S).group(1))
             self.assertEqual(config["targetUrl"], target)
 
-    def test_custom_user_agent_skips_splash(self):
+    def test_splash_only_when_header_rules_exist(self):
+        url = "https://www.youtube.com/tv"
         with tempfile.TemporaryDirectory() as tmp:
-            _, out, _ = self.run_cli("launch-prepare", "--extension", tmp, "--url", "https://www.youtube.com/tv", "--user-agent", "X/1")
-            self.assertEqual(out.splitlines(), ["X/1", "https://www.youtube.com/tv"])
+            _, out, _ = self.run_cli("launch-prepare", "--extension", tmp, "--url", url, "--user-agent", "X/1", "--dearrow", "0")
+            self.assertEqual(out.splitlines(), ["X/1", url])
+            _, out, _ = self.run_cli("launch-prepare", "--extension", tmp, "--url", url, "--user-agent", "X/1")
+            self.assertTrue(out.splitlines()[1].startswith("data:text/html"))
 
     def test_custom_user_agent_disables_client_hints(self):
         with tempfile.TemporaryDirectory() as tmp:
             status, out, _ = self.run_cli("launch-prepare", "--extension", tmp, "--user-agent", "Custom/1.0")
             self.assertEqual((status, out.splitlines()), (0, ["Custom/1.0", ""]))
-            self.assertEqual(json.loads((Path(tmp) / "rules.json").read_text()), [])
+            rules = json.loads((Path(tmp) / "rules.json").read_text())
+            self.assertEqual([rule["id"] for rule in rules], [2])
 
     def test_browser_identity_prints_nothing(self):
         status, out, _ = self.run_cli("launch-prepare", "--identity", "browser")
         self.assertEqual((status, out.splitlines()), (0, ["", ""]))
+
+    def test_community_service_switches(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            status, _, err = self.run_cli(
+                "launch-prepare", "--extension", tmp, "--sponsorblock", "0", "--dearrow", "no",
+                "--return-dislikes", "off", "--sponsorblock-categories", "Sponsor, intro bogus",
+            )
+            self.assertEqual(status, 0)
+            self.assertIn("unknown SponsorBlock category bogus", err)
+            match = re.search(r"Object\.freeze\((.*)\);", (Path(tmp) / "config.js").read_text(), re.S)
+            config = json.loads(match.group(1))
+            self.assertEqual(
+                (config["sponsorBlock"], config["deArrow"], config["returnDislikes"], config["sponsorBlockCategories"]),
+                (False, False, False, ["sponsor", "intro"]),
+            )
 
     def test_invalid_settings_fall_back_with_warnings(self):
         with tempfile.TemporaryDirectory() as tmp:

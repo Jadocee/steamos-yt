@@ -2,16 +2,20 @@
 """Assertions for one smoke-test launch; exits non-zero with a list of failures."""
 
 import json
+import re
 import sys
 from pathlib import Path
+
+from server import DOWNVOTED, ORIGINAL, RUNS, SKIPPED
 
 STARBOARD = 0x8000
 DOWN, UP = STARBOARD + 13, STARBOARD + 12
 STICK_UP = STARBOARD + 17
+DEARROW_THUMBNAIL = f"https://dearrow-thumb.ajay.app/api/v1/getThumbnail?videoID={SKIPPED}&time=42.5"
 
 
 def main() -> int:
-    output, mode = Path(sys.argv[1]), sys.argv[2]
+    output, scenario, mode = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
     failures = []
 
     def expect(condition, message):
@@ -47,6 +51,36 @@ def main() -> int:
     downs = [event for event in report["holdDown"] if event == ["down", DOWN]]
     expect(len(downs) >= 3 and report["holdDown"][-1] == ["up", DOWN], f"held D-pad should repeat: {report['holdDown']}")
     expect(report["stickUp"] == [["down", STICK_UP], ["up", STICK_UP]], f"left stick up: {report['stickUp']}")
+
+    tiles = {tile["id"]: tile for tile in report["deArrow"]}
+    expect(tiles[SKIPPED]["title"] == "An Honest Title", f"DeArrow title: {tiles[SKIPPED]['title']}")
+    if scenario == "titles-only":
+        expect(all("i.ytimg.com" in url for url in tiles[SKIPPED]["thumbnails"]), "titles-only mode must keep thumbnails")
+        expect(not report["thumbnailLoads"], "YouTube's CSP must still block DeArrow images in titles-only mode")
+        expect(any("dearrow-thumb" in uri for uri in report["cspViolations"]), f"CSP violations: {report['cspViolations']}")
+    else:
+        expect(tiles[SKIPPED]["thumbnails"] == [DEARROW_THUMBNAIL] * 2, f"DeArrow thumbnails: {tiles[SKIPPED]['thumbnails']}")
+        expect(report["thumbnailLoads"], f"DeArrow thumbnail blocked; CSP violations: {report['cspViolations']}")
+    expect(tiles[RUNS]["title"] == "Calm runs title", f"DeArrow title in runs: {tiles[RUNS]['title']}")
+    expect(tiles[ORIGINAL]["title"] == "Original title stays", "an 'original' DeArrow vote must keep the title")
+    expect(all("i.ytimg.com" in url for url in tiles[ORIGINAL]["thumbnails"]), "an 'original' vote must keep the thumbnail")
+    expect(tiles[DOWNVOTED]["title"] == "Downvoted stays", "a downvoted DeArrow title must be ignored")
+    expect(report["passthrough"], "an unrelated XHR must be untouched")
+
+    dislikes = report["dislikes"]
+    expect(dislikes["button"] == "1.2K", f"dislike button text: {dislikes['button']}")
+    expect(dislikes["factoids"] == [["Likes", "10K"], ["Dislikes", "1.2K"]], f"description factoids: {dislikes['factoids']}")
+
+    sponsor = report["sponsorBlock"]
+    expect(sponsor["afterSkip"] == 25, f"sponsor segment should skip to 25 s, got {sponsor['afterSkip']}")
+    expect(sponsor["midSegment"] == 15, "seeking into the middle of a segment must not skip it")
+    expect(sponsor["toasts"] == ["Skipped sponsor"], f"SponsorBlock toasts: {sponsor['toasts']}")
+
+    api_log = (output / "api.log").read_text().splitlines() if (output / "api.log").exists() else []
+    lookups = [line for line in api_log if line.startswith("sponsor.ajay.app")]
+    expect(any(re.search(r"/api/skipSegments/[0-9a-f]{4}\?", line) for line in lookups), f"SponsorBlock lookup: {lookups}")
+    expect(any(re.search(r"/api/branding/[0-9a-f]{4}\?", line) for line in lookups), f"DeArrow lookup: {lookups}")
+    expect(not any(SKIPPED in line for line in lookups), "SponsorBlock/DeArrow lookups must use hash prefixes, not video IDs")
 
     if mode == "leanback":
         hook = json.loads((output / "hook.json").read_text())

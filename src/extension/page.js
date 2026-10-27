@@ -40,10 +40,14 @@
   const CODEC_PATTERNS = { av1: /av01/i, vp9: /vp0?9/i, vp8: /vp0?8/i, h264: /avc[13]/i };
   const CONTAINER_SIZES = ['1280x720', '1920x1080', '2560x1440', '3840x2160', '7680x4320'];
 
+  let leanback = null;
+
   const api = {
     version: config.version || 'dev',
     config: Object.freeze({ ...config }),
     requestExit,
+    resolveCommand: (command) => (leanback ? leanback.resolveCommand(command) : undefined),
+    toast,
   };
   Object.defineProperty(window, '__steamosYt', { value: Object.freeze(api) });
 
@@ -63,6 +67,15 @@
 
   function requestExit(reason = 'request') {
     window.postMessage({ source: 'steamos-yt', type: 'exit', reason }, window.location.origin);
+  }
+
+  function toast(title, subtitle) {
+    api.resolveCommand({
+      openPopupAction: {
+        popupType: 'TOAST',
+        popup: { overlayToastRenderer: { title: { simpleText: title }, subtitle: { simpleText: subtitle } } },
+      },
+    });
   }
 
   function installExitHandling() {
@@ -85,6 +98,7 @@
 
     const wrap = (instance) => {
       const original = instance.resolveCommand;
+      leanback = instance;
       if (original.__steamosYt) {
         return;
       }

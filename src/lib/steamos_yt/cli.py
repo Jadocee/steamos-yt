@@ -105,8 +105,19 @@ def cmd_profile_clean_exit(args) -> int:
     return 0
 
 
+def _split(value: str) -> List[str]:
+    return [item for item in re.split(r"[,\s]+", value or "") if item]
+
+
 def _page_settings(args) -> identity.PageSettings:
-    settings = identity.PageSettings(controller=_flag(args.controller), exit_combo=_flag(args.exit_combo))
+    settings = identity.PageSettings(
+        controller=_flag(args.controller),
+        exit_combo=_flag(args.exit_combo),
+        sponsorblock=_flag(args.sponsorblock),
+        dearrow=_flag(args.dearrow),
+        dearrow_thumbnails=_flag(args.dearrow_thumbnails),
+        return_dislikes=_flag(args.return_dislikes),
+    )
     try:
         settings.cursor_hide_seconds = max(0.0, float(args.cursor_hide))
     except ValueError:
@@ -116,12 +127,19 @@ def _page_settings(args) -> identity.PageSettings:
         settings.max_resolution = args.max_resolution
     except ValueError as exc:
         _warn(f"{exc}; using auto")
-    codecs = [codec for codec in re.split(r"[,\s]+", args.block_codecs or "") if codec]
+    codecs = _split(args.block_codecs)
     try:
         identity.normalise_codecs(codecs)
         settings.block_codecs = codecs
     except ValueError as exc:
         _warn(f"{exc}; not blocking any codecs")
+    categories = _split(args.sponsorblock_categories)
+    try:
+        settings.sponsorblock_categories = identity.normalise_sponsorblock_categories(categories)
+    except ValueError as exc:
+        known = [item.lower() for item in categories if item.lower() in identity.SPONSORBLOCK_CATEGORIES]
+        settings.sponsorblock_categories = list(dict.fromkeys(known))
+        _warn(f"{exc}; skipping only {', '.join(settings.sponsorblock_categories) or 'nothing'}")
     return settings
 
 
@@ -141,10 +159,11 @@ def cmd_launch_prepare(args) -> int:
     and the URL to open, which is a boot screen while the identity rules load.
     """
     ident, user_agent = _identity_for(args)
+    settings = _page_settings(args)
     open_url = args.url
     if args.extension:
-        identity.write_extension_config(Path(args.extension), ident, _page_settings(args), args.url)
-        if args.url and ident is not None:
+        identity.write_extension_config(Path(args.extension), ident, settings, args.url)
+        if args.url and identity.dnr_rules(ident, settings):
             open_url = identity.splash_url(args.url)
     if args.profile:
         profile.mark_clean_exit(Path(args.profile))
@@ -222,6 +241,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--max-resolution", default="auto")
     sub.add_argument("--block-codecs", default="")
     sub.add_argument("--exit-combo", default="1")
+    sub.add_argument("--sponsorblock", default="1")
+    sub.add_argument("--sponsorblock-categories", default=",".join(identity.DEFAULT_SPONSORBLOCK_CATEGORIES))
+    sub.add_argument("--dearrow", default="1")
+    sub.add_argument("--dearrow-thumbnails", default="1")
+    sub.add_argument("--return-dislikes", default="1")
     sub.set_defaults(func=cmd_launch_prepare)
 
     sub = commands.add_parser("identity", help="print the user agent and Client Hints in use")

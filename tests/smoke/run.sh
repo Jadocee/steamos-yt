@@ -53,8 +53,10 @@ if [[ -z ${DISPLAY:-} ]]; then
     sleep 1
 fi
 
+HOSTS=(www.youtube.com sponsor.ajay.app dearrow-thumb.ajay.app returnyoutubedislikeapi.com)
+san=$(printf 'DNS:%s,' "${HOSTS[@]}")
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=www.youtube.com" \
-    -addext "subjectAltName=DNS:www.youtube.com" -keyout "$WORK/key.pem" -out "$WORK/cert.pem" >/dev/null 2>&1
+    -addext "subjectAltName=${san%,}" -keyout "$WORK/key.pem" -out "$WORK/cert.pem" >/dev/null 2>&1
 python3 "$ROOT/tests/smoke/server.py" --port "$PORT" --cert "$WORK/cert.pem" --key "$WORK/key.pem" --output "$OUTPUT" >"$WORK/server.log" 2>&1 &
 PIDS+=($!)
 for _ in {1..50}; do
@@ -62,7 +64,8 @@ for _ in {1..50}; do
     sleep 0.1
 done
 
-browser_flags=(--no-proxy-server --ignore-certificate-errors "--host-resolver-rules=MAP www.youtube.com 127.0.0.1:$PORT")
+rules=$(printf 'MAP %s 127.0.0.1:'"$PORT"', ' "${HOSTS[@]}")
+browser_flags=(--no-proxy-server --ignore-certificate-errors "--host-resolver-rules=${rules%, }")
 [[ $(id -u) == 0 ]] && browser_flags+=(--no-sandbox)
 
 stop_kiosk() {
@@ -83,10 +86,16 @@ wait_for() {
     done
 }
 
+CONFIG="$HOME_DIR/.config/steamos-yt/steamos-yt.conf"
+cp "$CONFIG" "$WORK/steamos-yt.conf"
 failed=0
-for mode in leanback combo close; do
-    echo "==> Exit path: $mode"
+for scenario in leanback combo close titles-only:leanback; do
+    mode=${scenario#*:}
+    scenario=${scenario%%:*}
+    echo "==> Scenario: $scenario (exit via $mode)"
     rm -f "$OUTPUT"/*
+    cp "$WORK/steamos-yt.conf" "$CONFIG"
+    [[ $scenario == titles-only ]] && echo "YT_DEARROW_THUMBNAILS=0" >>"$CONFIG"
     run_clean "$LAUNCHER" launch "https://www.youtube.com/tv?exit=$mode" -- "${browser_flags[@]}" &
     pid=$!
     PIDS+=("$pid")
@@ -104,8 +113,8 @@ for mode in leanback combo close; do
         failed=1
     fi
     stop_kiosk "$pid"
-    if python3 "$ROOT/tests/smoke/check.py" "$OUTPUT" "$mode"; then
-        echo "    ok: identity, controller bridge, media checks and exit hook"
+    if python3 "$ROOT/tests/smoke/check.py" "$OUTPUT" "$scenario" "$mode"; then
+        echo "    ok: identity, controller, media, SponsorBlock, DeArrow, dislikes and exit hook"
     else
         failed=1
     fi

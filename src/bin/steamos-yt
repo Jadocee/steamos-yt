@@ -64,6 +64,11 @@ load_config() {
     YT_KIOSK="1"
     YT_LANG=""
     YT_KEEP_STEAM_ENV="0"
+    YT_SPONSORBLOCK="1"
+    YT_SPONSORBLOCK_CATEGORIES="sponsor,selfpromo,interaction"
+    YT_DEARROW="1"
+    YT_DEARROW_THUMBNAILS="1"
+    YT_RETURN_DISLIKES="1"
 
     local file="$CONFIG_DIR/steamos-yt.conf" line key value
     [[ -r $file ]] || return 0
@@ -84,7 +89,8 @@ load_config() {
         fi
         case $key in
             YT_URL | YT_IDENTITY | YT_USER_AGENT | YT_CONTROLLER | YT_EXIT_COMBO | YT_CURSOR_HIDE_SECONDS | \
-                YT_MAX_RESOLUTION | YT_BLOCK_CODECS | YT_OZONE_PLATFORM | YT_KIOSK | YT_LANG | YT_KEEP_STEAM_ENV)
+                YT_MAX_RESOLUTION | YT_BLOCK_CODECS | YT_OZONE_PLATFORM | YT_KIOSK | YT_LANG | YT_KEEP_STEAM_ENV | \
+                YT_SPONSORBLOCK | YT_SPONSORBLOCK_CATEGORIES | YT_DEARROW | YT_DEARROW_THUMBNAILS | YT_RETURN_DISLIKES)
                 printf -v "$key" '%s' "$value"
                 ;;
             *) warn "ignoring unknown setting $key in $file" ;;
@@ -103,6 +109,11 @@ prepare_args() {
         --cursor-hide "$YT_CURSOR_HIDE_SECONDS"
         --max-resolution "$YT_MAX_RESOLUTION"
         --block-codecs "$YT_BLOCK_CODECS"
+        --sponsorblock "$YT_SPONSORBLOCK"
+        --sponsorblock-categories "$YT_SPONSORBLOCK_CATEGORIES"
+        --dearrow "$YT_DEARROW"
+        --dearrow-thumbnails "$YT_DEARROW_THUMBNAILS"
+        --return-dislikes "$YT_RETURN_DISLIKES"
         --extension "$APP_HOME/extension"
     )
 }
@@ -378,6 +389,26 @@ remove_update_timer() {
     fi
 }
 
+on_off() {
+    if [[ $1 == 1 || ${1,,} == true || ${1,,} == yes || ${1,,} == on ]]; then
+        printf 'on'
+    else
+        printf 'off'
+    fi
+}
+
+addon_summary() {
+    local thumbnails=""
+    if [[ $(on_off "$YT_DEARROW") == on && $(on_off "$YT_DEARROW_THUMBNAILS") == on ]]; then
+        thumbnails=" (with thumbnails)"
+    elif [[ $(on_off "$YT_DEARROW") == on ]]; then
+        thumbnails=" (titles only)"
+    fi
+    printf 'SponsorBlock %s (%s) · DeArrow %s%s · Return YouTube Dislike %s' \
+        "$(on_off "$YT_SPONSORBLOCK")" "${YT_SPONSORBLOCK_CATEGORIES:-none}" \
+        "$(on_off "$YT_DEARROW")" "$thumbnails" "$(on_off "$YT_RETURN_DISLIKES")"
+}
+
 report_lines() {
     local line
     while IFS= read -r line; do
@@ -519,6 +550,7 @@ cmd_install() {
     info "Steam:   Library → Non-Steam → $name (works in Game Mode and Desktop Mode)"
     info "Desktop: applications menu → $name, or run $LAUNCHER"
     info "Pad:     D-pad/stick move · A select · B back · hold View + Menu to exit"
+    info "Extras:  $(addon_summary)"
     info "Tweaks:  $CONFIG_DIR/steamos-yt.conf and flags.conf"
 }
 
@@ -673,6 +705,7 @@ cmd_doctor() {
         printf '  %-12s %s\n' "Helium" "not installed"
     fi
     printf '  %-12s %s\n' "Installed" "$(installed_versions | paste -sd' ' - || true)"
+    printf '  %-12s %s\n' "Add-ons" "$(addon_summary)"
     printf '  %-12s %s\n' "User agent" "$(helper identity --identity "$YT_IDENTITY" --user-agent "$YT_USER_AGENT" |
         python3 -c 'import json, sys; print(json.load(sys.stdin)["user_agent"] or "(Helium default)")' 2>/dev/null || echo '?')"
     if root=$(helper steam-root 2>/dev/null); then

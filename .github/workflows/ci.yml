@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Python unit tests
+        run: python3 -m unittest discover -s tests -v
+
+      - name: ShellCheck
+        run: shellcheck -x -P SCRIPTDIR install.sh uninstall.sh src/bin/steamos-yt src/lib/common.sh tests/smoke/run.sh
+
+      - name: JavaScript syntax
+        run: for file in src/extension/*.js tools/*.js; do node --check "$file"; done
+
+      - name: Extension manifest
+        run: python3 -m json.tool src/extension/manifest.json >/dev/null
+
+  smoke:
+    needs: checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Xvfb
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb
+
+      - name: Allow Chromium's user-namespace sandbox
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Smoke test against the latest Helium release
+        run: tests/smoke/run.sh

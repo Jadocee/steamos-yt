@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=@NAME@
+GenericName=YouTube on TV
+Comment=YouTube's TV interface in a Helium kiosk
+Exec="@LAUNCHER@"
+TryExec=@LAUNCHER@
+Icon=@APP_HOME@/artwork/icon.png
+Terminal=false
+StartupNotify=true
+StartupWMClass=steamos-yt
+Categories=AudioVideo;Video;Player;
+Keywords=YouTube;Video;TV;Leanback;Helium;

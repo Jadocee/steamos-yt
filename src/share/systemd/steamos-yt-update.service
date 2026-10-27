@@ -1,0 +1,9 @@
+[Unit]
+Description=Update Helium for SteamOS YT
+Documentation=https://github.com/jadocee/steamos-yt
+
+[Service]
+Type=oneshot
+ExecStart="@LAUNCHER@" update
+Nice=10
+IOSchedulingClass=idle

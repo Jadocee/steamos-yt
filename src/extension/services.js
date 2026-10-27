@@ -21,7 +21,7 @@
   const VIDEO_ID = /^[\w-]{11}$/;
   const RPC_TIMEOUT_MS = 8000;
   const DEARROW_BUDGET_MS = 1500;
-  const DISLIKES_TIMEOUT_MS = 2500;
+  const DISLIKES_TIMEOUT_MS = 1500;
   const SKIP_WINDOW_S = 2;
   const DEARROW_THUMBNAILS = 'https://dearrow-thumb.ajay.app/api/v1/getThumbnail';
   const PROGRESS_BAR = 'ytlr-progress-bar [idomkey="slider"]';

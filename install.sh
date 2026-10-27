@@ -5,6 +5,9 @@
 #   ./install.sh [options]
 #   curl -fsSL https://raw.githubusercontent.com/jadocee/steamos-yt/main/install.sh | bash
 #
+# When piped, the rest of the project is fetched from GitHub (STEAMOS_YT_REPO,
+# STEAMOS_YT_REF) or from the archive URL in STEAMOS_YT_SOURCE_URL.
+#
 # Run './install.sh --help' for the available options.
 set -Eeuo pipefail
 
@@ -20,13 +23,13 @@ local_source() {
 }
 
 download_source() {
-    local repo=${STEAMOS_YT_REPO:-jadocee/steamos-yt} destination
+    local repo=${STEAMOS_YT_REPO:-jadocee/steamos-yt} destination url
+    url=${STEAMOS_YT_SOURCE_URL:-https://github.com/$repo/archive/$STEAMOS_YT_REF.tar.gz}
     destination=$(mktemp -d)
-    printf '==> Downloading steamos-yt (%s@%s)\n' "$repo" "$STEAMOS_YT_REF" >&2
-    if ! curl -fsSL --retry 3 --connect-timeout 20 "https://github.com/$repo/archive/$STEAMOS_YT_REF.tar.gz" |
-        tar -xz -C "$destination" --strip-components=1; then
+    printf '==> Downloading steamos-yt from %s\n' "$url" >&2
+    if ! curl -fsSL --retry 3 --connect-timeout 20 "$url" | tar -xz -C "$destination" --strip-components=1; then
         rm -rf "$destination"
-        printf 'error: could not download steamos-yt from github.com/%s\n' "$repo" >&2
+        printf 'error: could not download steamos-yt from %s\n' "$url" >&2
         exit 1
     fi
     printf '%s\n' "$destination"

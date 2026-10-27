@@ -21,7 +21,7 @@ YouTube's TV interface on SteamOS, running in [Helium](https://helium.computer) 
 - SteamOS 3 (Steam Deck or other hardware) or Arch Linux with the native `steam` package
 - x86_64 or aarch64
 - `curl`, `tar`, `xz`, `python3` (3.8+) and `gpg`, all included with SteamOS
-- Sign in to Steam at least once before installing, so the library exists
+- Sign in to Steam at least once before installing, with every account that should get the shortcut, so their libraries exist
 
 ## Install
 

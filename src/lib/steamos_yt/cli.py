@@ -34,7 +34,12 @@ def _resolve(args) -> tuple:
     return root, accounts
 
 
-def _report(results: List[steam.ShortcutResult], verb: str, as_json: bool) -> None:
+def _account_label(account: int, names: Optional[dict]) -> str:
+    name = (names or {}).get(account)
+    return f"Steam account {name} ({account})" if name else f"Steam account {account}"
+
+
+def _report(results: List[steam.ShortcutResult], verb: str, as_json: bool, names: Optional[dict] = None) -> None:
     if as_json:
         payload = [
             {
@@ -52,7 +57,7 @@ def _report(results: List[steam.ShortcutResult], verb: str, as_json: bool) -> No
     for result in results:
         action = ("added" if result.created else "updated") if verb == "add" else verb
         print(
-            f"Steam account {result.account}: {action} \"{result.name}\" "
+            f"{_account_label(result.account, names)}: {action} \"{result.name}\" "
             f"(app ID {result.appid}, steam://rungameid/{result.game_id})"
         )
 
@@ -76,32 +81,55 @@ def cmd_shortcut_add(args) -> int:
         launch_options=args.launch_options,
     )
     results = steam.add_shortcut(root, accounts, spec, artwork, logo, rename=args.rename, backup=not args.no_backup)
-    _report(results, "add", args.json)
+    _report(results, "add", args.json, steam.account_names(root))
     return 0
 
 
 def cmd_shortcut_remove(args) -> int:
     root, accounts = _resolve(args)
     results = steam.remove_shortcut(root, accounts, args.exe, backup=not args.no_backup)
-    _report(results, "removed", args.json)
+    _report(results, "removed", args.json, steam.account_names(root))
     return 0
 
 
 def cmd_shortcut_status(args) -> int:
     root, accounts = _resolve(args)
     results = steam.shortcut_status(root, accounts, args.exe)
-    _report(results, "present", args.json)
+    _report(results, "present", args.json, steam.account_names(root))
     return 0 if results else EXIT_ERROR
 
 
-def cmd_profile_seed(args) -> int:
-    path = profile.seed_profile(Path(args.profile), services=not args.no_services)
-    print(path)
+def cmd_steam_accounts(args) -> int:
+    root = steam.find_steam_root(args.steam_root)
+    if root is None:
+        return EXIT_NO_STEAM
+    names = steam.account_names(root)
+    default = steam.launch_account(root)
+    for account in steam.account_ids(root):
+        name = " ".join(names.get(account, "").split())
+        print(f"{account}\t{name}\t{1 if account == default else 0}")
     return 0
 
 
-def cmd_profile_clean_exit(args) -> int:
-    profile.mark_clean_exit(Path(args.profile))
+def _steam_root_or_none(explicit: Optional[str]) -> Optional[Path]:
+    try:
+        return steam.find_steam_root(explicit)
+    except steam.SteamError:
+        return None
+
+
+def cmd_profile_adopt(args) -> int:
+    root = _steam_root_or_none(args.steam_root)
+    account = steam.launch_account(root)
+    if account and profile.adopt_shared_profile(Path(args.app_home), account):
+        print(_account_label(account, steam.account_names(root) if root else None))
+    return 0
+
+
+def cmd_profile_seed_all(args) -> int:
+    for directory in profile.all_profiles(Path(args.app_home)):
+        profile.seed_profile(directory, services=not args.no_services)
+        print(directory)
     return 0
 
 
@@ -152,11 +180,22 @@ def _identity_for(args) -> tuple:
     return ident, ident.user_agent
 
 
-def cmd_launch_prepare(args) -> int:
-    """Refresh generated extension files and tidy the profile.
+def _launch_profile(args) -> Optional[Path]:
+    if args.profile:
+        return Path(args.profile)
+    if not args.app_home:
+        return None
+    per_account = _flag(args.per_account)
+    account = steam.launch_account(_steam_root_or_none(args.steam_root), args.steam_account) if per_account else None
+    return profile.resolve_profile(Path(args.app_home), account, per_account)
 
-    Prints two lines: the user agent to pass to Helium (empty for its default)
-    and the URL to open, which is a boot screen while the identity rules load.
+
+def cmd_launch_prepare(args) -> int:
+    """Refresh generated extension files and pick and tidy the profile.
+
+    Prints three lines: the user agent to pass to Helium (empty for its
+    default), the URL to open (a boot screen while the header rules load) and
+    the profile directory for the Steam account being served.
     """
     ident, user_agent = _identity_for(args)
     settings = _page_settings(args)
@@ -165,10 +204,12 @@ def cmd_launch_prepare(args) -> int:
         identity.write_extension_config(Path(args.extension), ident, settings, args.url)
         if args.url and identity.dnr_rules(ident, settings):
             open_url = identity.splash_url(args.url)
-    if args.profile:
-        profile.mark_clean_exit(Path(args.profile))
+    directory = _launch_profile(args)
+    if directory is not None:
+        profile.prepare_profile(directory, services=_flag(args.helium_services))
     print(user_agent)
     print(open_url)
+    print(directory or "")
     return 0
 
 
@@ -218,14 +259,19 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--exe", required=True)
     sub.set_defaults(func=cmd_shortcut_status)
 
-    sub = commands.add_parser("profile-seed", help="write the kiosk defaults into the Helium profile")
-    sub.add_argument("--profile", required=True)
-    sub.add_argument("--no-services", action="store_true", help="do not opt in to Helium services")
-    sub.set_defaults(func=cmd_profile_seed)
+    sub = commands.add_parser("profile-adopt", help="hand the shared profile to the most recent Steam account")
+    sub.add_argument("--app-home", required=True)
+    sub.add_argument("--steam-root")
+    sub.set_defaults(func=cmd_profile_adopt)
 
-    sub = commands.add_parser("profile-clean-exit", help="suppress the 'restore pages' prompt")
-    sub.add_argument("--profile", required=True)
-    sub.set_defaults(func=cmd_profile_clean_exit)
+    sub = commands.add_parser("profile-seed-all", help="write the kiosk defaults into every existing profile")
+    sub.add_argument("--app-home", required=True)
+    sub.add_argument("--no-services", action="store_true", help="do not opt in to Helium services")
+    sub.set_defaults(func=cmd_profile_seed_all)
+
+    sub = commands.add_parser("steam-accounts", help="list Steam accounts: ID, name, used by launches without an account (1/0)")
+    sub.add_argument("--steam-root")
+    sub.set_defaults(func=cmd_steam_accounts)
 
     def identity_options(sub: argparse.ArgumentParser) -> None:
         sub.add_argument("--identity", choices=("cobalt", "browser"), default="cobalt")
@@ -233,7 +279,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub = commands.add_parser("launch-prepare", help="prepare extension config and profile before launch")
     identity_options(sub)
-    sub.add_argument("--profile")
+    sub.add_argument("--profile", help="explicit profile directory (skips account resolution)")
+    sub.add_argument("--app-home", help="install directory holding profile/ and profiles/")
+    sub.add_argument("--steam-account", default="", help="account ID passed by the account's Steam shortcut")
+    sub.add_argument("--steam-root")
+    sub.add_argument("--per-account", default="1", help="keep a separate profile per Steam account")
+    sub.add_argument("--helium-services", default="1", help="opt new profiles in to Helium services")
     sub.add_argument("--extension")
     sub.add_argument("--url", default="", help="page the kiosk should end up on")
     sub.add_argument("--controller", default="1")

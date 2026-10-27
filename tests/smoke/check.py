@@ -16,6 +16,7 @@ DEARROW_THUMBNAIL = f"https://dearrow-thumb.ajay.app/api/v1/getThumbnail?videoID
 
 def main() -> int:
     output, scenario, mode = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+    expected_cookie = sys.argv[4] if len(sys.argv) > 4 else "*"
     failures = []
 
     def expect(condition, message):
@@ -27,6 +28,7 @@ def main() -> int:
     report = json.loads((output / "report.json").read_text())
     page_headers = json.loads((output / "page-headers.json").read_text())
 
+    expect(report["exitMode"] == mode, f"page opened with exit={report['exitMode']}, not the launched {mode}: stale settings")
     expect(report["companion"], "companion page script did not run on the first page load")
     expect("Cobalt/" in report["userAgent"], f"navigator.userAgent is not Cobalt: {report['userAgent']}")
     ua_data = report.get("uaData") or {}
@@ -81,6 +83,11 @@ def main() -> int:
     expect(any(re.search(r"/api/skipSegments/[0-9a-f]{4}\?", line) for line in lookups), f"SponsorBlock lookup: {lookups}")
     expect(any(re.search(r"/api/branding/[0-9a-f]{4}\?", line) for line in lookups), f"DeArrow lookup: {lookups}")
     expect(not any(SKIPPED in line for line in lookups), "SponsorBlock/DeArrow lookups must use hash prefixes, not video IDs")
+
+    if expected_cookie != "*":
+        cookies = dict(part.strip().split("=", 1) for part in page_headers.get("cookie", "").split(";") if "=" in part)
+        actual = cookies.get("probe", "-")
+        expect(actual == expected_cookie, f"profile cookie: expected {expected_cookie!r}, got {actual!r}")
 
     if mode == "leanback":
         hook = json.loads((output / "hook.json").read_text())

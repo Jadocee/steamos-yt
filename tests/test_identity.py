@@ -3,6 +3,7 @@ import re
 import tempfile
 import unittest
 from pathlib import Path
+from urllib.parse import unquote
 
 import _paths  # noqa: F401
 from steamos_yt import cli, identity
@@ -100,6 +101,12 @@ class IdentityTests(unittest.TestCase):
             rules = json.loads((directory / "rules.json").read_text())
             self.assertEqual([rule["id"] for rule in rules], [1, 2])
             self.assertTrue(config["headerRules"])
+            self.assertEqual(json.loads((directory / "config.json").read_text()), config)
+
+    def test_background_recognises_the_splash_page(self):
+        background = (Path(__file__).resolve().parents[1] / "src/extension/background.js").read_text()
+        self.assertIn(f"const SPLASH_MARKER = '{identity.SPLASH_MARKER}';", background)
+        self.assertIn(identity.SPLASH_MARKER, unquote(identity.splash_url("https://www.youtube.com/tv")))
 
 
 class LaunchPrepareTests(unittest.TestCase):
@@ -116,15 +123,14 @@ class LaunchPrepareTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             status, out, err = self.run_cli("launch-prepare", "--extension", tmp, "--url", "https://www.youtube.com/tv")
             self.assertEqual(status, 0)
-            user_agent, open_url = out.splitlines()
+            user_agent, open_url, profile_dir = out.splitlines()
             self.assertIn("Cobalt/", user_agent)
+            self.assertEqual(profile_dir, "")
             self.assertTrue(open_url.startswith("data:text/html"))
             self.assertEqual(err, "")
             self.assertTrue((Path(tmp) / "config.js").exists())
 
     def test_opens_splash_page_that_forwards_to_target(self):
-        from urllib.parse import unquote
-
         with tempfile.TemporaryDirectory() as tmp:
             target = "https://www.youtube.com/tv?a=1&b=</script>"
             _, out, _ = self.run_cli("launch-prepare", "--extension", tmp, "--url", target)
@@ -142,20 +148,20 @@ class LaunchPrepareTests(unittest.TestCase):
         url = "https://www.youtube.com/tv"
         with tempfile.TemporaryDirectory() as tmp:
             _, out, _ = self.run_cli("launch-prepare", "--extension", tmp, "--url", url, "--user-agent", "X/1", "--dearrow", "0")
-            self.assertEqual(out.splitlines(), ["X/1", url])
+            self.assertEqual(out.splitlines(), ["X/1", url, ""])
             _, out, _ = self.run_cli("launch-prepare", "--extension", tmp, "--url", url, "--user-agent", "X/1")
             self.assertTrue(out.splitlines()[1].startswith("data:text/html"))
 
     def test_custom_user_agent_disables_client_hints(self):
         with tempfile.TemporaryDirectory() as tmp:
             status, out, _ = self.run_cli("launch-prepare", "--extension", tmp, "--user-agent", "Custom/1.0")
-            self.assertEqual((status, out.splitlines()), (0, ["Custom/1.0", ""]))
+            self.assertEqual((status, out.splitlines()), (0, ["Custom/1.0", "", ""]))
             rules = json.loads((Path(tmp) / "rules.json").read_text())
             self.assertEqual([rule["id"] for rule in rules], [2])
 
     def test_browser_identity_prints_nothing(self):
         status, out, _ = self.run_cli("launch-prepare", "--identity", "browser")
-        self.assertEqual((status, out.splitlines()), (0, ["", ""]))
+        self.assertEqual((status, out.splitlines()), (0, ["", "", ""]))
 
     def test_community_service_switches(self):
         with tempfile.TemporaryDirectory() as tmp:

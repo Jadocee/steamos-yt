@@ -9,6 +9,7 @@ source "$APP_HOME/lib/common.sh"
 DEFAULT_NAME="YouTube"
 LOGO_POSITION="BottomLeft:42:58"
 CONFIG_FILES=(steamos-yt.conf flags.conf)
+INSTALL_SETTINGS="$APP_HOME/install.conf"
 
 usage() {
     cat <<EOF
@@ -17,13 +18,17 @@ SteamOS YT $STEAMOS_YT_VERSION: YouTube on TV in a Helium kiosk, integrated with
 Usage: steamos-yt [command] [options]
 
 Commands:
-  launch [--verbose] [URL] [-- FLAGS...]
+  launch [--verbose] [--steam-account ID] [URL] [-- FLAGS...]
                               Start the kiosk (default). Extra Helium flags follow "--";
-                              --verbose prints Helium's output instead of logging it.
+                              --verbose prints Helium's output instead of logging it;
+                              --steam-account picks whose profile to use (the Steam
+                              shortcut passes it, otherwise the most recent account).
   install [options]           Install or repair everything (see 'steamos-yt install --help').
   update [--force]            Update Helium to the newest signed release.
   rollback                    Switch back to the previously installed Helium.
-  steam add|remove|status     Manage the Steam library shortcut and artwork.
+  steam add|remove|status [--user all|auto|ID]
+                              Manage the Steam library shortcut and artwork (all accounts
+                              by default; auto is the most recently signed-in one).
   doctor                      Show diagnostics for troubleshooting.
   uninstall [--purge]         Remove steamos-yt (--purge also deletes sign-in data and settings).
   version                     Show version information.
@@ -40,7 +45,8 @@ Usage: steamos-yt install [options]
   --helium-version VER     Install a specific Helium release instead of the latest
   --helium-archive FILE    Install Helium from a local helium-*_linux.tar.xz (and .asc)
   --skip-verify            Do not require a valid Helium signature (not recommended)
-  --steam-user ID          Steam account for the shortcut: auto (default), all, or an ID
+  --steam-user ID          Steam accounts that get the shortcut: all (default), auto
+                           (the most recently signed-in one) or an account ID
   --no-steam               Do not add a Steam library shortcut
   --no-restart-steam       Leave Steam closed after updating its library
   --no-desktop-entry       Do not add an applications menu entry
@@ -69,6 +75,7 @@ load_config() {
     YT_DEARROW="1"
     YT_DEARROW_THUMBNAILS="1"
     YT_RETURN_DISLIKES="1"
+    YT_PROFILE_PER_STEAM_ACCOUNT="1"
 
     local file="$CONFIG_DIR/steamos-yt.conf" line key value
     [[ -r $file ]] || return 0
@@ -90,7 +97,8 @@ load_config() {
         case $key in
             YT_URL | YT_IDENTITY | YT_USER_AGENT | YT_CONTROLLER | YT_EXIT_COMBO | YT_CURSOR_HIDE_SECONDS | \
                 YT_MAX_RESOLUTION | YT_BLOCK_CODECS | YT_OZONE_PLATFORM | YT_KIOSK | YT_LANG | YT_KEEP_STEAM_ENV | \
-                YT_SPONSORBLOCK | YT_SPONSORBLOCK_CATEGORIES | YT_DEARROW | YT_DEARROW_THUMBNAILS | YT_RETURN_DISLIKES)
+                YT_SPONSORBLOCK | YT_SPONSORBLOCK_CATEGORIES | YT_DEARROW | YT_DEARROW_THUMBNAILS | YT_RETURN_DISLIKES | \
+                YT_PROFILE_PER_STEAM_ACCOUNT)
                 printf -v "$key" '%s' "$value"
                 ;;
             *) warn "ignoring unknown setting $key in $file" ;;
@@ -131,15 +139,36 @@ prepare_environment() {
     fi
 }
 
+install_setting() {
+    local key=$1 fallback=$2 line
+    if [[ -r $INSTALL_SETTINGS ]]; then
+        while IFS= read -r line || [[ -n $line ]]; do
+            if [[ $line == "$key="* ]]; then
+                printf '%s' "${line#*=}"
+                return 0
+            fi
+        done <"$INSTALL_SETTINGS"
+    fi
+    printf '%s' "$fallback"
+}
+
+fallback_profile() {
+    if [[ $(on_off "$YT_PROFILE_PER_STEAM_ACCOUNT") == on && $1 =~ ^[1-9][0-9]{0,9}$ ]] && (($1 <= 4294967295)); then
+        printf '%s/%s' "$PROFILES_DIR" "$1"
+    else
+        printf '%s' "$PROFILE_DIR"
+    fi
+}
+
 clear_stale_lock() {
-    local lock="$PROFILE_DIR/SingletonLock" target pid exe
-    [[ -L $lock ]] || return 0
-    target=$(readlink "$lock") || return 0
+    local directory=$1 target pid exe
+    [[ -L $directory/SingletonLock ]] || return 0
+    target=$(readlink "$directory/SingletonLock") || return 0
     pid=${target##*-}
     if [[ $pid =~ ^[0-9]+$ ]] && exe=$(readlink "/proc/$pid/exe" 2>/dev/null) && [[ $exe == "$HELIUM_DIR"/* ]]; then
         return 0
     fi
-    rm -f "$PROFILE_DIR/SingletonLock" "$PROFILE_DIR/SingletonSocket" "$PROFILE_DIR/SingletonCookie"
+    rm -f "$directory/SingletonLock" "$directory/SingletonSocket" "$directory/SingletonCookie"
 }
 
 append_unique() {
@@ -204,9 +233,9 @@ read_flag_file() {
 
 build_flags() {
     local -n built=$1
-    local user_agent=$2
+    local user_agent=$2 profile=$3
     built=(
-        "--user-data-dir=$PROFILE_DIR"
+        "--user-data-dir=$profile"
         "--class=steamos-yt"
         --no-first-run
         --no-default-browser-check
@@ -238,7 +267,8 @@ build_flags() {
 }
 
 cmd_launch() {
-    local url="" verbose=0 extra=() flags=() prepare=() prepared=() user_agent="" open_url="" output argument
+    local url="" verbose=0 account="" extra=() flags=() prepare=() prepared=() user_agent="" open_url="" profile=""
+    local output argument
     while (($#)); do
         argument=$1
         shift
@@ -248,10 +278,19 @@ cmd_launch() {
                 break
                 ;;
             --verbose) verbose=1 ;;
+            --steam-account)
+                account=${1:-}
+                (($#)) && shift
+                ;;
+            --steam-account=*) account=${argument#*=} ;;
             http://* | https://*) url=$argument ;;
             *) extra+=("$argument") ;;
         esac
     done
+    if [[ -n $account && ! $account =~ ^[0-9]+$ ]]; then
+        warn "ignoring invalid --steam-account value: $account"
+        account=""
+    fi
 
     load_config
     url=${url:-$YT_URL}
@@ -259,19 +298,24 @@ cmd_launch() {
     [[ -x $wrapper ]] || die "Helium is not installed; run: $LAUNCHER update"
 
     prepare_environment
-    mkdir -p "$STATE_DIR" "$PROFILE_DIR"
-    clear_stale_lock
+    mkdir -p "$STATE_DIR"
     prepare_args prepare
-    if output=$(helper launch-prepare --profile "$PROFILE_DIR" --url "$url" "${prepare[@]}"); then
+    if output=$(helper launch-prepare --app-home "$APP_HOME" --steam-account "$account" \
+        --per-account "$YT_PROFILE_PER_STEAM_ACCOUNT" --helium-services "$(install_setting HELIUM_SERVICES 1)" \
+        --url "$url" "${prepare[@]}"); then
         mapfile -t prepared <<<"$output"
         user_agent=${prepared[0]:-}
         open_url=${prepared[1]:-}
+        profile=${prepared[2]:-}
     else
-        warn "could not prepare the companion extension; continuing with defaults"
+        warn "could not prepare the companion extension and profile; continuing with defaults"
     fi
     open_url=${open_url:-$url}
+    profile=${profile:-$(fallback_profile "$account")}
+    mkdir -p "$profile"
+    clear_stale_lock "$profile"
 
-    build_flags flags "$user_agent"
+    build_flags flags "$user_agent" "$profile"
     read_flag_file flags "$CONFIG_DIR/flags.conf"
     flags+=("${extra[@]}")
     merge_features flags
@@ -397,6 +441,14 @@ on_off() {
     fi
 }
 
+profile_mode() {
+    if [[ $(on_off "$YT_PROFILE_PER_STEAM_ACCOUNT") == on ]]; then
+        printf 'separate for each Steam account'
+    else
+        printf 'shared by all Steam accounts'
+    fi
+}
+
 addon_summary() {
     local thumbnails=""
     if [[ $(on_off "$YT_DEARROW") == on && $(on_off "$YT_DEARROW_THUMBNAILS") == on ]]; then
@@ -425,7 +477,8 @@ steam_add() {
     fi
     steam_stop
     local args=(shortcut-add --exe "$LAUNCHER" --start-dir "$APP_HOME" --name "$name"
-        --artwork-dir "$APP_HOME/artwork" --logo-position "$LOGO_POSITION" --user "$user" --steam-root "$root")
+        --artwork-dir "$APP_HOME/artwork" --logo-position "$LOGO_POSITION" --user "$user" --steam-root "$root"
+        "--launch-options=--steam-account {account}")
     if ((rename)); then
         args+=(--rename)
     fi
@@ -465,8 +518,8 @@ steam_remove() {
 }
 
 cmd_install() {
-    local name=$DEFAULT_NAME rename=0 helium_version="" helium_archive="" skip_verify=0 steam_user=auto
-    local add_steam=1 desktop=1 auto_update=1 services=1 restart=1 prepare=() seed=()
+    local name=$DEFAULT_NAME rename=0 helium_version="" helium_archive="" skip_verify=0 steam_user=all
+    local add_steam=1 desktop=1 auto_update=1 services=1 restart=1 prepare=() seed=() adopted=""
     while (($#)); do
         case $1 in
             --name)
@@ -511,7 +564,7 @@ cmd_install() {
     is_steamos || warn "this does not look like SteamOS; continuing anyway"
 
     log "Installing SteamOS YT $STEAMOS_YT_VERSION into $APP_HOME"
-    mkdir -p "$APP_HOME" "$CONFIG_DIR" "$CACHE_DIR" "$STATE_DIR" "$PROFILE_DIR"
+    mkdir -p "$APP_HOME" "$CONFIG_DIR" "$CACHE_DIR" "$STATE_DIR"
     install_helium "$helium_version" "$helium_archive" "$skip_verify"
 
     log "Configuring the kiosk"
@@ -520,15 +573,22 @@ cmd_install() {
         conffile_install "$file"
     done
     load_config
-    seed=(profile-seed --profile "$PROFILE_DIR")
+    printf 'HELIUM_SERVICES=%s\n' "$services" >"$INSTALL_SETTINGS"
+    if [[ $(on_off "$YT_PROFILE_PER_STEAM_ACCOUNT") == on ]]; then
+        adopted=$(helper profile-adopt --app-home "$APP_HOME") || adopted=""
+        if [[ -n $adopted ]]; then
+            ok "Moved the existing YouTube sign-in to $adopted; other accounts get their own profile"
+        fi
+    fi
+    seed=(profile-seed-all --app-home "$APP_HOME")
     if ((services == 0)); then
         seed+=(--no-services)
     fi
     helper "${seed[@]}" >/dev/null
     if ((services)); then
-        ok "Prepared the Helium profile (Helium services on; reinstall with --no-helium-services to opt out)"
+        ok "Prepared the Helium profiles (Helium services on; reinstall with --no-helium-services to opt out)"
     else
-        ok "Prepared the Helium profile (Helium services off)"
+        ok "Prepared the Helium profiles (Helium services off)"
     fi
     prepare_args prepare
     helper launch-prepare "${prepare[@]}" >/dev/null
@@ -550,6 +610,7 @@ cmd_install() {
     info "Steam:   Library → Non-Steam → $name (works in Game Mode and Desktop Mode)"
     info "Desktop: applications menu → $name, or run $LAUNCHER"
     info "Pad:     D-pad/stick move · A select · B back · hold View + Menu to exit"
+    info "Sign-in: $(profile_mode)"
     info "Extras:  $(addon_summary)"
     info "Tweaks:  $CONFIG_DIR/steamos-yt.conf and flags.conf"
 }
@@ -637,7 +698,7 @@ cmd_steam() {
     done
     refuse_root
     case $action in
-        add) steam_add "$name" "$rename" "${user:-auto}" "$restart" ;;
+        add) steam_add "$name" "$rename" "${user:-all}" "$restart" ;;
         remove) steam_remove "${user:-all}" "$restart" ;;
         status)
             root=$(helper steam-root 2>/dev/null) || die "Steam was not found"
@@ -677,13 +738,42 @@ cmd_uninstall() {
     rm -rf "$CACHE_DIR"
     if ((purge)); then
         rm -rf "$APP_HOME" "$CONFIG_DIR" "$STATE_DIR"
-        ok "Removed the app, settings and profile"
+        ok "Removed the app, settings and profiles"
     else
-        find "$APP_HOME" -mindepth 1 -maxdepth 1 ! -name profile -exec rm -rf {} +
-        ok "Removed the app; kept your profile in $PROFILE_DIR and settings in $CONFIG_DIR"
+        find "$APP_HOME" -mindepth 1 -maxdepth 1 ! -name profile ! -name profiles -exec rm -rf {} +
+        ok "Removed the app; kept your profiles in $APP_HOME and settings in $CONFIG_DIR"
     fi
     if ((restart)); then
         steam_restart
+    fi
+}
+
+profile_size() {
+    if [[ -d $1 ]]; then
+        du -sh "$1" 2>/dev/null | cut -f1
+    else
+        printf 'not created yet'
+    fi
+}
+
+doctor_profiles() {
+    local accounts id name default line
+    if [[ $(on_off "$YT_PROFILE_PER_STEAM_ACCOUNT") == off ]]; then
+        printf '  %-12s %s\n' "Profile" "$PROFILE_DIR ($(profile_size "$PROFILE_DIR"); shared by all Steam accounts)"
+        return 0
+    fi
+    printf '  %-12s %s\n' "Profiles" "$PROFILES_DIR (one per Steam account)"
+    accounts=$(helper steam-accounts 2>/dev/null) || accounts=""
+    while IFS=$'\t' read -r id name default; do
+        [[ -n $id ]] || continue
+        line="${name:-?} ($id): $(profile_size "$PROFILES_DIR/$id")"
+        if [[ $default == 1 ]]; then
+            line+="; also used when started outside Steam"
+        fi
+        printf '  %-12s %s\n' "" "$line"
+    done <<<"$accounts"
+    if [[ -d $PROFILE_DIR || -z $accounts ]]; then
+        printf '  %-12s %s\n' "" "shared, used when no Steam account is known ($PROFILE_DIR): $(profile_size "$PROFILE_DIR")"
     fi
 }
 
@@ -696,7 +786,7 @@ cmd_doctor() {
     printf '  %-12s %s\n' "Session" "$(in_game_mode && echo 'Game Mode (gamescope)' || echo "${XDG_SESSION_TYPE:-unknown} desktop")"
     printf '  %-12s %s\n' "App" "$APP_HOME"
     printf '  %-12s %s\n' "Settings" "$CONFIG_DIR"
-    printf '  %-12s %s\n' "Profile" "$PROFILE_DIR ($(du -sh "$PROFILE_DIR" 2>/dev/null | cut -f1 || echo 'empty'))"
+    doctor_profiles
     printf '  %-12s %s\n' "Python" "$(python3 --version 2>&1)"
     if helium_version=$(helium_current_version); then
         version=$("$HELIUM_DIR/current/helium" --version 2>/dev/null) || version="$helium_version (the binary did not run)"

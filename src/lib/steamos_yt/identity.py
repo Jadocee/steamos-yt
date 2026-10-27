@@ -250,7 +250,6 @@ def page_config(identity: Optional[Identity], settings: PageSettings, target_url
     return {
         "version": __version__,
         "targetUrl": target_url,
-        "splashMarker": SPLASH_MARKER,
         "controller": bool(settings.controller),
         "cursorHideMs": max(0, int(settings.cursor_hide_seconds * 1000)),
         "maxResolution": normalise_resolution(settings.max_resolution),
@@ -285,9 +284,15 @@ def write_extension_config(
     settings: PageSettings,
     target_url: str = "",
 ) -> None:
-    """Write the generated ``config.js`` and ``rules.json`` the companion extension loads."""
+    """Write the generated ``config.js``, ``config.json`` and ``rules.json`` the companion extension loads.
+
+    Content scripts read ``config.js``. The background reads ``config.json``
+    instead, because Chromium keeps serving a service worker's imported
+    scripts from its cache until the extension version changes.
+    """
     extension_dir = Path(extension_dir)
-    config = json.dumps(page_config(identity, settings, target_url), indent=2)
-    script = f"globalThis.__STEAMOS_YT_CONFIG__ = Object.freeze({config});\n"
+    config = page_config(identity, settings, target_url)
+    script = f"globalThis.__STEAMOS_YT_CONFIG__ = Object.freeze({json.dumps(config, indent=2)});\n"
     atomic_write_bytes(extension_dir / "config.js", script.encode("utf-8"))
+    atomic_write_json(extension_dir / "config.json", config)
     atomic_write_json(extension_dir / "rules.json", dnr_rules(identity, settings))

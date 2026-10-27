@@ -1,17 +1,33 @@
 'use strict';
 
-importScripts('config.js', 'api.js');
+importScripts('api.js');
 
-const config = globalThis.__STEAMOS_YT_CONFIG__ || {};
 const TV_URL = /^https:\/\/www\.youtube\.com\/tv(?:[/?#]|$)/;
-const SPLASH_MARKER = config.splashMarker || 'steamos-yt-splash';
+const SPLASH_MARKER = 'steamos-yt-splash';
 const RULES_TIMEOUT_MS = 4000;
 
 const urlOf = (tab) => (tab && (tab.url || tab.pendingUrl)) || '';
 const isTv = (tab) => TV_URL.test(urlOf(tab));
 const isSplash = (tab) => urlOf(tab).startsWith('data:text/html') && urlOf(tab).includes(SPLASH_MARKER);
 
-async function rulesReady(url) {
+let configLoad = null;
+
+/**
+ * Settings written at launch. Fetched rather than imported: Chromium serves a
+ * service worker's imported scripts from its cache until the extension version
+ * changes, which would keep the first launch's settings.
+ */
+function loadConfig() {
+  configLoad ??= fetch(chrome.runtime.getURL('config.json'), { cache: 'no-store' })
+    .then((response) => response.json())
+    .catch((error) => {
+      console.warn('steamos-yt: could not read config.json', error);
+      return {};
+    });
+  return configLoad;
+}
+
+async function rulesReady(url, config) {
   if (!config.headerRules) {
     return;
   }
@@ -35,6 +51,7 @@ let leaving = null;
 
 function leaveSplash() {
   leaving ??= (async () => {
+    const config = await loadConfig();
     if (!config.targetUrl) {
       return;
     }
@@ -42,7 +59,7 @@ function leaveSplash() {
     if (splashTabs.length === 0) {
       return;
     }
-    await rulesReady(config.targetUrl);
+    await rulesReady(config.targetUrl, config);
     await Promise.all(splashTabs.map((tab) => chrome.tabs.update(tab.id, { url: config.targetUrl })));
   })()
     .catch((error) => console.warn('steamos-yt: could not leave the boot screen', error))

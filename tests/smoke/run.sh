@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # End-to-end smoke test: installs into a throwaway HOME, launches the kiosk
 # against a local HTTPS stand-in for www.youtube.com/tv, and checks the
-# companion extension, the device identity and every exit path.
+# companion extension, the device identity, every exit path and the separate
+# profile for each Steam account.
 #
 #   tests/smoke/run.sh [helium-<version>-x86_64_linux.tar.xz]
 #
@@ -87,16 +88,18 @@ wait_for() {
 }
 
 CONFIG="$HOME_DIR/.config/steamos-yt/steamos-yt.conf"
+APP="$HOME_DIR/.local/share/steamos-yt"
 cp "$CONFIG" "$WORK/steamos-yt.conf"
 failed=0
-for scenario in leanback combo close titles-only:leanback; do
-    mode=${scenario#*:}
-    scenario=${scenario%%:*}
-    echo "==> Scenario: $scenario (exit via $mode)"
+
+run_scenario() {
+    local scenario=$1 mode=$2 cookie=$3 pid
+    shift 3
+    echo "==> Scenario: $scenario (exit via $mode${1:+; $*})"
     rm -f "$OUTPUT"/*
     cp "$WORK/steamos-yt.conf" "$CONFIG"
     [[ $scenario == titles-only ]] && echo "YT_DEARROW_THUMBNAILS=0" >>"$CONFIG"
-    run_clean "$LAUNCHER" launch "https://www.youtube.com/tv?exit=$mode" -- "${browser_flags[@]}" &
+    run_clean "$LAUNCHER" launch "$@" "https://www.youtube.com/tv?exit=$mode&probe=$scenario" -- "${browser_flags[@]}" &
     pid=$!
     PIDS+=("$pid")
     if ! wait_for 40 test -s "$OUTPUT/report.json"; then
@@ -104,7 +107,7 @@ for scenario in leanback combo close titles-only:leanback; do
         tail -n 30 "$HOME_DIR/.local/state/steamos-yt/launch.log" || true
         failed=1
         stop_kiosk "$pid"
-        continue
+        return 0
     fi
     if wait_for 20 bash -c "! kill -0 $pid 2>/dev/null"; then
         echo "    ok: kiosk closed itself"
@@ -113,12 +116,43 @@ for scenario in leanback combo close titles-only:leanback; do
         failed=1
     fi
     stop_kiosk "$pid"
-    if python3 "$ROOT/tests/smoke/check.py" "$OUTPUT" "$scenario" "$mode"; then
-        echo "    ok: identity, controller, media, SponsorBlock, DeArrow, dislikes and exit hook"
+    if python3 "$ROOT/tests/smoke/check.py" "$OUTPUT" "$scenario" "$mode" "$cookie"; then
+        echo "    ok: identity, controller, media, SponsorBlock, DeArrow, dislikes, exit hook and profile"
     else
         failed=1
     fi
+}
+
+add_steam_accounts() {
+    local steam="$HOME_DIR/.local/share/Steam"
+    mkdir -p "$steam/userdata/111/config" "$steam/userdata/222/config" "$steam/config"
+    printf '%s\n' '"users"' '{' \
+        '  "76561197960265839" { "AccountName" "alpha" "PersonaName" "Alpha" "MostRecent" "1" }' \
+        '  "76561197960265950" { "AccountName" "beta" "PersonaName" "Beta" "MostRecent" "0" }' \
+        '}' >"$steam/config/loginusers.vdf"
+}
+
+expect_profile() {
+    if [[ $1 == present && -d $APP/$2 ]] || [[ $1 == absent && ! -e $APP/$2 ]]; then
+        echo "    ok: $2 $1"
+    else
+        echo "    FAIL $2 should be $1"
+        failed=1
+    fi
+}
+
+for scenario in leanback combo close titles-only:leanback; do
+    run_scenario "${scenario%%:*}" "${scenario#*:}" "*"
 done
+
+echo "==> Steam accounts: the first launch inherits the shared profile, then each account keeps its own"
+add_steam_accounts
+run_scenario account-a leanback titles-only
+run_scenario account-b leanback - --steam-account 222
+run_scenario account-a-again leanback account-a --steam-account 111
+expect_profile absent profile
+expect_profile present profiles/111
+expect_profile present profiles/222
 
 if ((failed)); then
     echo "==> Smoke test FAILED"

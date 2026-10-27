@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import dataclasses
 import os
+import re
 import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -12,6 +14,7 @@ from . import vdf
 from .fsutil import atomic_copy, atomic_write_bytes, atomic_write_json
 
 STEAM_ID64_BASE = 76561197960265728
+MAX_ACCOUNT_ID = 0xFFFFFFFF
 BACKUP_SUFFIX = ".steamos-yt.bak"
 
 ARTWORK_SLOTS = {
@@ -23,6 +26,8 @@ ARTWORK_SLOTS = {
 }
 ARTWORK_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".ico")
 LOGO_PINS = ("BottomLeft", "UpperLeft", "CenterCenter", "UpperCenter", "BottomCenter")
+ACCOUNT_PLACEHOLDER = "{account}"
+_ACCOUNT_OPTION = re.compile(r"(?:^|\s)--steam-account(?:=|\s+)\d+(?=\s|$)")
 
 
 class SteamError(RuntimeError):
@@ -153,31 +158,73 @@ def account_ids(root: Path) -> List[int]:
     return sorted(
         int(child.name)
         for child in userdata.iterdir()
-        if child.is_dir() and child.name.isdigit() and int(child.name) > 0
+        if child.is_dir() and child.name.isdecimal() and int(child.name) > 0
     )
 
 
-def most_recent_account(root: Path) -> Optional[int]:
-    """Return the account ID of the user Steam marks as most recently signed in."""
+def _login_users(root: Path) -> List[Tuple[int, vdf.KeyValues]]:
     path = Path(root) / "config" / "loginusers.vdf"
     try:
         data = vdf.loads_text(path.read_text(encoding="utf-8", errors="replace"))
     except (OSError, vdf.VdfError):
-        return None
+        return []
     users = data.get("users")
     if not isinstance(users, vdf.KeyValues):
-        return None
+        return []
+    return [
+        (to_account_id(int(steam_id)), info)
+        for steam_id, info in users.items()
+        if steam_id.isdecimal() and isinstance(info, vdf.KeyValues)
+    ]
+
+
+def most_recent_account(root: Path) -> Optional[int]:
+    """Return the account ID of the user Steam marks as most recently signed in."""
     best, best_stamp = None, -1
-    for steam_id, info in users.items():
-        if not isinstance(info, vdf.KeyValues) or not steam_id.isdigit():
-            continue
-        account = to_account_id(int(steam_id))
+    for account, info in _login_users(root):
         if str(info.get("MostRecent", "0")) == "1":
             return account
         stamp = str(info.get("Timestamp", "0"))
-        if stamp.isdigit() and int(stamp) > best_stamp:
+        if stamp.isdecimal() and int(stamp) > best_stamp:
             best, best_stamp = account, int(stamp)
     return best
+
+
+def account_names(root: Path) -> Dict[int, str]:
+    """Map account IDs to the display names Steam remembers for them."""
+    return {
+        account: str(info.get("PersonaName") or info.get("AccountName") or "")
+        for account, info in _login_users(root)
+    }
+
+
+def launch_account(root: Optional[Path], hint: Optional[str] = None) -> Optional[int]:
+    """Steam account a launch belongs to.
+
+    Each account's shortcut passes its own ``--steam-account``; launches from
+    elsewhere (Desktop Mode, a terminal) fall back to the most recent sign-in.
+    """
+    hint = str(hint or "").strip()
+    account = to_account_id(int(hint)) if hint.isdecimal() else 0
+    if 0 < account <= MAX_ACCOUNT_ID:
+        return account
+    if root is None:
+        return None
+    recent = most_recent_account(root)
+    if recent:
+        return recent
+    accounts = account_ids(root)
+    return accounts[0] if len(accounts) == 1 else None
+
+
+def merge_launch_options(existing: str, managed: str) -> str:
+    """Put ``managed`` options into a shortcut's launch options, keeping anything else the user added."""
+    remainder = _ACCOUNT_OPTION.sub("", existing or "").strip()
+    if not managed:
+        return remainder
+    if "%command%" in remainder:
+        return remainder.replace("%command%", f"%command% {managed}", 1)
+    return f"{managed} {remainder}".strip()
 
 
 def select_accounts(root: Path, selector: Optional[str] = "auto") -> List[int]:
@@ -189,7 +236,7 @@ def select_accounts(root: Path, selector: Optional[str] = "auto") -> List[int]:
     if selector == "auto":
         recent = most_recent_account(root)
         return [recent] if recent in available else available
-    if selector.isdigit():
+    if selector.isdecimal():
         account = to_account_id(int(selector))
         if account in available:
             return [account]
@@ -274,7 +321,7 @@ class ShortcutsFile:
             entry.set("AppName", spec.name)
         entry.set("Exe", quote(spec.exe))
         entry.set("StartDir", quote(spec.start_dir))
-        entry.set("LaunchOptions", spec.launch_options)
+        entry.set("LaunchOptions", merge_launch_options(str(entry.get("LaunchOptions", "")), spec.launch_options))
         if spec.icon:
             entry.set("icon", spec.icon)
         appid = self.entry_appid(entry)
@@ -390,7 +437,8 @@ def add_shortcut(
     for account in accounts:
         directory = config_dir(root, account)
         shortcuts = ShortcutsFile.load(directory / "shortcuts.vdf")
-        entry, appid, created = shortcuts.upsert(spec, rename=rename)
+        options = spec.launch_options.replace(ACCOUNT_PLACEHOLDER, str(account))
+        entry, appid, created = shortcuts.upsert(dataclasses.replace(spec, launch_options=options), rename=rename)
         installed = install_artwork(directory / "grid", appid, artwork or {}, logo_position)
         if "icon" in installed:
             entry.set("icon", str(installed["icon"]))

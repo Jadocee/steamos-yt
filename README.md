@@ -9,11 +9,12 @@ YouTube's TV interface on SteamOS, running in [Helium](https://helium.computer) 
 - **Console UI**: YouTube on TV (the interface used by consoles and smart TVs), not the desktop site.
 - **One-command install**: no root access, no `steamos-readonly` changes; everything lives in your home folder and survives SteamOS updates.
 - **Signed Helium**: downloads the latest official build and checks its PGP signature against Helium's pinned key before use. A weekly user timer keeps it current; the previous version is kept for rollback.
-- **Steam integration**: adds a non-Steam shortcut with a portrait capsule, wide capsule, hero, logo (with position) and icon, and handles Steam being open.
+- **Steam integration**: adds a non-Steam shortcut to every Steam account on the device, with a portrait capsule, wide capsule, hero, logo (with position) and icon, and handles Steam being open.
+- **A sign-in per Steam account**: each Steam account gets its own browser profile, so YouTube sign-ins, cookies and watch history follow whoever is signed in to Steam.
 - **Controller support**: a bundled companion extension translates the Steam Deck's controls (or any gamepad) into the key codes YouTube's console apps receive.
 - **SponsorBlock, DeArrow and Return YouTube Dislike**: built into the companion extension for the TV interface and on by default. Sponsored segments are skipped with an on-screen notice and marked on the progress bar, clickbait titles and thumbnails are replaced, and dislike counts return.
 - **Clean exits**: choosing *Exit* inside YouTube, holding **View + Menu**, or *Exit game* from Steam returns you to the library.
-- **Kiosk profile**: a dedicated Helium profile with no first-run pages, prompts or restore bubbles, VA-API hardware video decoding, autoplay enabled, and Helium's built-in uBlock Origin.
+- **Kiosk profiles**: dedicated Helium profiles with no first-run pages, prompts or restore bubbles, VA-API hardware video decoding, autoplay enabled, and Helium's built-in uBlock Origin.
 
 ## Requirements
 
@@ -43,7 +44,7 @@ The installer closes Steam (after asking) to add the shortcut, then starts it ag
 | Option | Effect |
 | --- | --- |
 | `--name NAME` | Library title (default `YouTube`) |
-| `--steam-user ID` | `auto` (most recent account, default), `all`, or an account ID or SteamID64 |
+| `--steam-user ID` | `all` (every account that has signed in on this device, default), `auto` (the most recent one), or an account ID or SteamID64 |
 | `--helium-version VER` | Install a specific Helium release |
 | `--helium-archive FILE` | Install from a local `helium-*_linux.tar.xz` (its `.asc` must sit beside it) |
 | `--no-steam` / `--no-desktop-entry` / `--no-auto-update` | Skip the shortcut, menu entry or update timer |
@@ -52,7 +53,7 @@ The installer closes Steam (after asking) to add the shortcut, then starts it ag
 | `-y`, `--yes` | Do not ask before closing Steam |
 | `--skip-verify` | Accept an unsigned Helium build (not recommended) |
 
-Re-running the installer is safe. It updates the app in place, keeps your settings and sign-in, and refreshes the Steam shortcut without duplicating it.
+Re-running the installer is safe. It updates the app in place, keeps your settings and sign-ins, and refreshes the Steam shortcuts without duplicating them.
 
 ## Using it
 
@@ -69,6 +70,16 @@ Sign in through YouTube's own *Sign in* screen: it shows a code to enter at `you
 | Mouse / trackpad | Cursor appears on movement and hides after 3 s; wheel moves the selection; right-click goes back |
 
 In Game Mode, keep a **gamepad** controller layout for the shortcut (Steam's default for non-Steam games). Keyboard-and-mouse layouts such as *Web Browser* stop the controller bridge from seeing the gamepad.
+
+## Several Steam accounts
+
+The installer adds YouTube to every Steam account that has signed in on the device. Each account also gets its own Helium profile, holding its YouTube and Google sign-in, cookies, watch history and settings. When someone else signs in to Steam, they see their own YouTube, not yours.
+
+- **How the account is known**: each account's shortcut starts the launcher with `--steam-account <ID>`, which selects `~/.local/share/steamos-yt/profiles/<ID>/`. Launches from outside Steam (the Desktop Mode menu or a terminal) use the most recently signed-in Steam account; pick another with `steamos-yt launch --steam-account <ID>`. `steamos-yt doctor` lists the accounts and their profiles.
+- **Accounts that sign in later**: Steam creates an account's library folder at its first sign-in, after the installer has run. Run `steamos-yt steam add` from Desktop Mode once that account has signed in.
+- **Upgrading from 1.1 or earlier**: the previous shared profile and its sign-in move to the first account that starts YouTube (or to the most recently signed-in account when the installer runs); the other accounts start signed out.
+- **One profile for everyone**: set `YT_PROFILE_PER_STEAM_ACCOUNT=0` to have every account share `profile/` instead.
+- **Several people on one Steam account**: YouTube on TV can hold several Google accounts and switch between them from its own account menu, with no Steam changes.
 
 ## SponsorBlock, DeArrow and Return YouTube Dislike
 
@@ -104,6 +115,7 @@ Settings live in `~/.config/steamos-yt/` and apply the next time YouTube starts.
 | `YT_DEARROW` | `1` | DeArrow titles and thumbnails |
 | `YT_DEARROW_THUMBNAILS` | `1` | `0` keeps YouTube's thumbnails and its page security policy |
 | `YT_RETURN_DISLIKES` | `1` | Show dislike counts |
+| `YT_PROFILE_PER_STEAM_ACCOUNT` | `1` | Separate sign-in, cookies and history for each Steam account (`0` shares one profile) |
 | `YT_CURSOR_HIDE_SECONDS` | `3` | Cursor auto-hide delay (`0` never hides) |
 | `YT_MAX_RESOLUTION` | `auto` | `screen`, `720p` … `2160p` or `WIDTHxHEIGHT` to raise or cap playback size |
 | `YT_BLOCK_CODECS` | empty | Hide `av1`, `vp9`, `vp8` or `h264` from YouTube, for example to save battery |
@@ -120,10 +132,11 @@ The installer places a `steamos-yt` command in `~/.local/share/steamos-yt/bin/`:
 
 ```text
 steamos-yt                     start the kiosk (what Steam runs)
-steamos-yt launch URL -- FLAGS open a specific YouTube URL or pass extra Helium flags
+steamos-yt launch [--steam-account ID] [URL] [-- FLAGS]
+                               start as a given Steam account, open a specific URL or pass Helium flags
 steamos-yt update [--force]    install the newest signed Helium
 steamos-yt rollback            switch back to the previously installed Helium
-steamos-yt steam add|remove|status [--name NAME] [--user ID]
+steamos-yt steam add|remove|status [--name NAME] [--user all|auto|ID]
 steamos-yt doctor              diagnostics for troubleshooting
 steamos-yt uninstall [--purge] remove everything (--purge also deletes sign-in data)
 ```
@@ -134,8 +147,8 @@ steamos-yt uninstall [--purge] remove everything (--purge also deletes sign-in d
 
 ```mermaid
 flowchart LR
-  Steam["Steam shortcut"] --> Launcher["steamos-yt launcher"]
-  Launcher -->|"kiosk flags, profile, TV user agent"| Helium["Helium"]
+  Steam["Steam shortcut"] -->|"--steam-account ID"| Launcher["steamos-yt launcher"]
+  Launcher -->|"kiosk flags, the account's profile, TV user agent"| Helium["Helium"]
   Helium --> Splash["Boot screen"]
   Splash -->|"identity rules live"| TV["youtube.com/tv"]
   Extension["Companion extension"] -.->|"Client Hints, gamepad → Starboard keys, media checks, exit, SponsorBlock, DeArrow, dislikes"| TV
@@ -148,12 +161,13 @@ flowchart LR
 5. **Exit**: YouTube's *Exit* command, `window.close()` and the View + Menu combo all ask the extension to close the kiosk window, which ends the Steam session cleanly.
 6. **Community services**: the TV interface renders from innertube responses (`/youtubei/v1/browse`, `search` and `next`). The extension holds those responses back briefly to write in DeArrow titles and thumbnails and the dislike count. SponsorBlock follows the `<video>` element on the interface's `#/watch` route and announces skips through YouTube's own notice system.
 7. **Steam**: shortcuts are written to `userdata/<account>/config/shortcuts.vdf` with the ID Steam itself derives (`crc32(exe + name) | 0x80000000`). Artwork goes to `config/grid/` under the names Steam looks up. A backup of `shortcuts.vdf` is kept as `shortcuts.vdf.steamos-yt.bak`.
+8. **Profiles**: each account's shortcut carries `--steam-account <ID>` in its launch options (anything else you add there is kept). The launcher maps that ID to `profiles/<ID>/` and falls back to the most recent sign-in from Steam's `loginusers.vdf` when started elsewhere.
 
 Launches run with Steam's `LD_PRELOAD` and runtime library path removed, as Flatpak apps are, so Helium uses its own sandbox and the system libraries.
 
 | Path | Contents |
 | --- | --- |
-| `~/.local/share/steamos-yt/` | Launcher, helpers, extension, artwork, Helium versions, `profile/` (sign-in data) |
+| `~/.local/share/steamos-yt/` | Launcher, helpers, extension, artwork, Helium versions, `profiles/<account ID>/` (each Steam account's sign-in data; `profile/` when shared) |
 | `~/.config/steamos-yt/` | `steamos-yt.conf`, `flags.conf` |
 | `~/.local/state/steamos-yt/launch.log` | Output of the last launch (`launch.log.1` for the one before) |
 | `~/.config/systemd/user/steamos-yt-update.*` | Weekly Helium update timer |
@@ -165,7 +179,8 @@ Run `steamos-yt doctor` first; it reports versions, paths, the Steam shortcut, t
 
 - **The desktop YouTube site appears**: YouTube rejected the TV identity. Make sure `YT_IDENTITY=cobalt` and `YT_USER_AGENT` is empty. If YouTube changes its rules, set `YT_USER_AGENT` to another TV user agent.
 - **The controller does nothing**: switch the shortcut's controller layout to a gamepad template. Outside Steam, press a button once so the browser can see the controller.
-- **The shortcut is missing**: Steam must be closed while its library is edited, which is impossible in Game Mode. From Desktop Mode, run `~/.local/share/steamos-yt/bin/steamos-yt steam add`.
+- **The shortcut is missing**: Steam must be closed while its library is edited, which is impossible in Game Mode. From Desktop Mode, run `~/.local/share/steamos-yt/bin/steamos-yt steam add`. This also covers Steam accounts that first signed in after installation.
+- **The wrong YouTube account appears**: launches from the Desktop Mode menu use the most recently signed-in Steam account's profile. `steamos-yt doctor` shows which profile belongs to which account.
 - **Black screen or GPU errors**: set `YT_OZONE_PLATFORM=x11`, or try `--disable-gpu` in `flags.conf`, and check `launch.log`.
 - **Stutter or high battery use**: run `vainfo` to see which codecs your GPU decodes. Hide the others with `YT_BLOCK_CODECS`, for example `av1`.
 - **No skips, new titles or dislike counts**: check `YT_SPONSORBLOCK`, `YT_DEARROW` and `YT_RETURN_DISLIKES`, and that the services listed above are reachable from your network.
@@ -174,7 +189,7 @@ Run `steamos-yt doctor` first; it reports versions, paths, the Steam shortcut, t
 ## Development
 
 ```bash
-python3 -m unittest discover -s tests          # VDF, Steam, profile and identity logic
+python3 -m unittest discover -s tests          # VDF, Steam, profile, identity and helper CLI logic
 shellcheck -x -P SCRIPTDIR install.sh uninstall.sh src/bin/steamos-yt src/lib/common.sh tests/smoke/run.sh
 tests/smoke/run.sh [helium-*_linux.tar.xz]     # end-to-end: real Helium under Xvfb against a local YouTube stand-in
 node tools/render-artwork.js                   # re-render assets/artwork from assets/src (Playwright + Inter fonts)
@@ -185,7 +200,8 @@ The smoke test installs into a throwaway home folder. It serves an HTTPS stand-i
 - the user agent, Client Hints and `userAgentData`, including on the first navigation;
 - the controller, wheel and media-capability behaviour;
 - SponsorBlock skips and notices, DeArrow titles and thumbnails, and dislike counts, against mocked services. This includes checking that lookups use hash prefixes and that titles-only mode keeps YouTube's security policy;
-- all three exit paths, each of which must close the kiosk.
+- all three exit paths, each of which must close the kiosk;
+- separate profiles per Steam account: the first account inherits the earlier shared profile, a cookie set by one account stays invisible to another, and each account's cookies persist across launches.
 
 | Path | Purpose |
 | --- | --- |
@@ -193,7 +209,7 @@ The smoke test installs into a throwaway home folder. It serves an HTTPS stand-i
 | `src/bin/steamos-yt` | Launcher and management CLI (Bash) |
 | `src/lib/common.sh` | Shared shell helpers: Helium download, signature checks, Steam process control |
 | `src/lib/steamos_yt/` | Python standard-library helpers: binary/text VDF, Steam shortcuts and artwork, profile, identity |
-| `src/extension/` | Manifest V3 companion extension: `page.js` (controller, identity, media, exit), `services.js` and `api.js` (SponsorBlock, DeArrow, Return YouTube Dislike); `config.js` and `rules.json` are generated at launch |
+| `src/extension/` | Manifest V3 companion extension: `page.js` (controller, identity, media, exit), `services.js` and `api.js` (SponsorBlock, DeArrow, Return YouTube Dislike); `config.js`, `config.json` and `rules.json` are generated at launch |
 | `src/share/` | Default settings, desktop entry and systemd units |
 | `assets/src`, `assets/artwork` | SVG sources and rendered Steam artwork |
 | `keys/helium.asc` | Helium's public signing key (fingerprint `BE67 7C19 89D3 5EAB 2C5F 26C9 3516 01AD 01D6 378E`) |

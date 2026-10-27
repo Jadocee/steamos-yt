@@ -334,8 +334,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, PIXEL, "image/png")
         if url.path.startswith("/tv"):
             (self.output / "page-headers.json").write_text(json.dumps(self._headers(), indent=2))
-            policy = {"Content-Security-Policy": "img-src 'self' https://i.ytimg.com; connect-src 'self'"}
-            return self._send(200, PAGE.encode(), "text/html; charset=utf-8", policy)
+            extra = {"Content-Security-Policy": "img-src 'self' https://i.ytimg.com; connect-src 'self'"}
+            if query.get("probe"):
+                extra["Set-Cookie"] = f"probe={query['probe'][0]}; Path=/; Max-Age=3600; SameSite=Lax"
+            return self._send(200, PAGE.encode(), "text/html; charset=utf-8", extra)
         if url.path == "/headers":
             return self._json(self._headers())
         return self._send(404)

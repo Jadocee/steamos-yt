@@ -1,7 +1,7 @@
 # shellcheck shell=bash disable=SC2034
 # Shared helpers for steamos-yt. Sourced by bin/steamos-yt and install.sh.
 
-STEAMOS_YT_VERSION="1.1.0"
+STEAMOS_YT_VERSION="1.2.0"
 STEAMOS_YT_REPO="${STEAMOS_YT_REPO:-jadocee/steamos-yt}"
 HELIUM_REPO="imputnet/helium-linux"
 HELIUM_KEY_FINGERPRINT="BE677C1989D35EAB2C5F26C9351601AD01D6378E"
@@ -14,6 +14,7 @@ STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/steamos-yt"
 SYSTEMD_USER_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 APPLICATIONS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 PROFILE_DIR="$APP_HOME/profile"
+PROFILES_DIR="$APP_HOME/profiles"
 HELIUM_DIR="$APP_HOME/helium"
 LAUNCHER="$APP_HOME/bin/steamos-yt"
 DESKTOP_FILE="$APPLICATIONS_DIR/steamos-yt.desktop"

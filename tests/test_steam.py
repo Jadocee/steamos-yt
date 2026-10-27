@@ -1,4 +1,6 @@
+import dataclasses
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -108,6 +110,46 @@ class DiscoveryTests(unittest.TestCase):
     def test_auto_falls_back_to_all_without_login_data(self):
         (self.root / "config/loginusers.vdf").unlink()
         self.assertEqual(steam.select_accounts(self.root, "auto"), sorted([ACCOUNT, OTHER]))
+
+
+class AccountTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = make_steam(Path(self.tmp.name))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_launch_account_prefers_the_shortcut_hint(self):
+        self.assertEqual(steam.launch_account(self.root, str(OTHER)), OTHER)
+        self.assertEqual(steam.launch_account(self.root, f" {steam.STEAM_ID64_BASE + OTHER} "), OTHER)
+        self.assertEqual(steam.launch_account(None, str(OTHER)), OTHER)
+
+    def test_launch_account_falls_back_to_most_recent_then_sole_account(self):
+        for hint in (None, "", "abc", "0", "²", str(2**32)):
+            self.assertEqual(steam.launch_account(self.root, hint), ACCOUNT, hint)
+        (self.root / "config/loginusers.vdf").unlink()
+        self.assertIsNone(steam.launch_account(self.root))
+        shutil.rmtree(self.root / "userdata" / str(OTHER))
+        self.assertEqual(steam.launch_account(self.root), ACCOUNT)
+        self.assertIsNone(steam.launch_account(None))
+
+    def test_account_names_prefer_persona_name(self):
+        (self.root / "config/loginusers.vdf").write_text(
+            f'"users" {{ "{steam.STEAM_ID64_BASE + ACCOUNT}" {{ "AccountName" "deck" "PersonaName" "Deck Owner" }}\n'
+            f'"{steam.STEAM_ID64_BASE + OTHER}" {{ "AccountName" "guest" }} }}\n'
+        )
+        self.assertEqual(steam.account_names(self.root), {ACCOUNT: "Deck Owner", OTHER: "guest"})
+
+    def test_merge_launch_options_keeps_user_options(self):
+        merge = steam.merge_launch_options
+        self.assertEqual(merge("", "--steam-account 5"), "--steam-account 5")
+        self.assertEqual(merge("--verbose", "--steam-account 5"), "--steam-account 5 --verbose")
+        self.assertEqual(merge("LANG=de %command% --verbose", "--steam-account 5"), "LANG=de %command% --steam-account 5 --verbose")
+        self.assertEqual(merge("--steam-account=9 --verbose --steam-account 7", "--steam-account 5"), "--steam-account 5 --verbose")
+        self.assertEqual(merge("%command% --steam-account 5", "--steam-account 5"), "%command% --steam-account 5")
+        self.assertEqual(merge("--steam-account 9 --verbose", ""), "--verbose")
+        self.assertEqual(merge("--steam-accounts 9", "--steam-account 5"), "--steam-account 5 --steam-accounts 9")
 
 
 class ShortcutTests(unittest.TestCase):
@@ -238,6 +280,17 @@ class ShortcutTests(unittest.TestCase):
         [result] = self.add()
         [status] = steam.shortcut_status(self.root, [ACCOUNT, OTHER], EXE)
         self.assertEqual((status.account, status.appid, status.name), (ACCOUNT, result.appid, "YouTube"))
+
+    def test_launch_options_name_each_account_and_keep_user_options(self):
+        options = dataclasses.replace(spec(), launch_options=f"--steam-account {steam.ACCOUNT_PLACEHOLDER}")
+        steam.add_shortcut(self.root, [ACCOUNT, OTHER], options)
+        for account in (ACCOUNT, OTHER):
+            self.assertEqual(self.load_entries(account).get("0").get("LaunchOptions"), f"--steam-account {account}")
+        shortcuts = steam.ShortcutsFile.load(self.config / "shortcuts.vdf")
+        shortcuts.find(EXE)[0].set("LaunchOptions", f"LANG=de %command% --steam-account {OTHER}")
+        shortcuts.save()
+        steam.add_shortcut(self.root, [ACCOUNT], options)
+        self.assertEqual(self.load_entries().get("0").get("LaunchOptions"), f"LANG=de %command% --steam-account {ACCOUNT}")
 
     def test_corrupt_file_is_reported(self):
         (self.config / "shortcuts.vdf").write_bytes(b"\x00shortcuts\x00\x01broken")

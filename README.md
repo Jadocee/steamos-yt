@@ -96,6 +96,8 @@ Lookups run in the extension's background worker and are cached for 30 minutes (
 
 YouTube's TV page only allows images from Google's servers, and paints each thumbnail as a CSS background, which that policy governs. Rather than switching the policy off, the extension lays the DeArrow image over YouTube's thumbnail as an `<img>` created from its isolated content-script world: Chromium checks such requests against the extension's policy, not the page's. The image only appears once it has loaded, so a thumbnail DeArrow cannot deliver leaves YouTube's in place, and recycled tiles drop the overlay as soon as they show another video. Set `YT_DEARROW_THUMBNAILS=0` to use DeArrow for titles only.
 
+SponsorBlock and DeArrow data comes from the SponsorBlock project under [CC BY-NC-SA 4.0](https://github.com/ajayyy/SponsorBlock/wiki/Database-and-API-License); dislike counts come from the [Return YouTube Dislike](https://returnyoutubedislike.com) API. DeArrow's official extension is a paid product with a free trial. If DeArrow improves your viewing, consider [buying a licence](https://dearrow.ajay.app/payment) to support it.
+
 ## YouTube only
 
 The kiosk opens YouTube and nothing else. Allowed are `youtube.com` and its subdomains (including YouTube Music and the consent pages), `youtu.be`, `youtube-nocookie.com`, `youtubekids.com`, Google's sign-in, consent and policy pages, Google's "unusual traffic" check, and the site of `YT_URL`.
@@ -106,8 +108,6 @@ The kiosk opens YouTube and nothing else. Allowed are `youtube.com` and its subd
 - Only whole pages are restricted. The images, scripts and video YouTube loads from other Google domains are unaffected.
 
 Add sites with `YT_ALLOWED_SITES` (comma-separated domains; subdomains are included), or set `YT_BLOCK_OTHER_SITES=0` to allow everything.
-
-SponsorBlock and DeArrow data comes from the SponsorBlock project under [CC BY-NC-SA 4.0](https://github.com/ajayyy/SponsorBlock/wiki/Database-and-API-License); dislike counts come from the [Return YouTube Dislike](https://returnyoutubedislike.com) API. DeArrow's official extension is a paid product with a free trial. If DeArrow improves your viewing, consider [buying a licence](https://dearrow.ajay.app/payment) to support it.
 
 ## Configuration
 

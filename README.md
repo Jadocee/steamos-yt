@@ -77,7 +77,7 @@ The installer adds YouTube to every Steam account that has signed in on the devi
 
 - **How the account is known**: each account's shortcut starts the launcher with `--steam-account <ID>`, which selects `~/.local/share/steamos-yt/profiles/<ID>/`. Launches from outside Steam (the Desktop Mode menu or a terminal) use the most recently signed-in Steam account; pick another with `steamos-yt launch --steam-account <ID>`. `steamos-yt doctor` lists the accounts and their profiles.
 - **Accounts that sign in later**: Steam creates an account's library folder at its first sign-in, after the installer has run. Run `steamos-yt steam add` from Desktop Mode once that account has signed in.
-- **Upgrading from 1.1 or earlier**: the previous shared profile and its sign-in move to the first account that starts YouTube (or to the most recently signed-in account when the installer runs); the other accounts start signed out.
+- **Upgrading from 1.1 or earlier**: the installer moves the previous shared profile, with its sign-in, to the most recently signed-in Steam account (if YouTube is open at the time, to the first account that starts it afterwards). The other accounts start signed out.
 - **One profile for everyone**: set `YT_PROFILE_PER_STEAM_ACCOUNT=0` to have every account share `profile/` instead.
 - **Several people on one Steam account**: YouTube on TV can hold several Google accounts and switch between them from its own account menu, with no Steam changes.
 

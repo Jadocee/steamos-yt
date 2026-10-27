@@ -6,6 +6,7 @@ const TV_URL = /^https:\/\/www\.youtube\.com\/tv(?:[/?#]|$)/;
 const SPLASH_MARKER = 'steamos-yt-splash';
 const RULES_TIMEOUT_MS = 4000;
 const SPLASH_RESEND_MS = 10000;
+const SEND_BACK_REPEAT_MS = 3000;
 
 const urlOf = (tab) => (tab && (tab.url || tab.pendingUrl)) || '';
 const isTv = (tab) => TV_URL.test(urlOf(tab));
@@ -114,6 +115,76 @@ async function guardPopup(tab) {
   }
 }
 
+const sentBack = new Map();
+const onSite = (host, site) => host === site || host.endsWith(`.${site}`);
+const kioskTab = (tab) => isTv(tab) || isSplash(tab);
+
+/** Pages the kiosk may show: the boot screen, the allowed sites and Google's "unusual traffic" check. */
+function allowedPage(url, config) {
+  if (isSplashUrl(url)) {
+    return true;
+  }
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    return false;
+  }
+  return (config.allowedSites || []).some((site) => onSite(parsed.hostname, site))
+    || (onSite(parsed.hostname, 'google.com') && parsed.pathname.startsWith('/sorry/'));
+}
+
+/**
+ * Closes every tab but the kiosk's: pop-ups, new tabs and new windows from
+ * keyboard shortcuts. The kiosk tab is the oldest one showing the boot screen
+ * or YouTube on TV; tab IDs only grow during a session.
+ */
+async function keepOneTab(tabs) {
+  const byAge = [...tabs].sort((left, right) => left.id - right.id);
+  const keep = byAge.find(kioskTab) ?? byAge[0];
+  await Promise.allSettled(tabs.filter((tab) => tab.id !== keep.id).map((tab) => chrome.tabs.remove(tab.id)));
+  await chrome.tabs.update(keep.id, { active: true }).catch(() => {});
+  await chrome.windows.update(keep.windowId, { focused: true }).catch(() => {});
+}
+
+/**
+ * Returns the kiosk tab from another site or a browser page (such as the new
+ * tab page) to where it was, or to the start page when going back would land
+ * somewhere disallowed again.
+ */
+async function sendBack(tabId, config) {
+  const last = sentBack.get(tabId) ?? 0;
+  sentBack.set(tabId, Date.now());
+  const wentBack = Date.now() - last > SEND_BACK_REPEAT_MS
+    && await chrome.tabs.goBack(tabId).then(() => true, () => false);
+  if (!wentBack) {
+    await chrome.tabs.update(tabId, { url: config.targetUrl || 'https://www.youtube.com/tv' });
+  }
+}
+
+/**
+ * Keeps the kiosk on YouTube when other sites are blocked. Their pages never
+ * load (a declarativeNetRequest rule blocks them); this handles what the rule
+ * cannot see: extra tabs and windows, and browser pages in the kiosk tab.
+ */
+async function enforceSiteLock(tab, changedUrl) {
+  const config = await loadConfig();
+  if (!config.blockOtherSites) {
+    return changedUrl ? undefined : guardPopup(tab);
+  }
+  const tabs = await chrome.tabs.query({});
+  if (tabs.length > 1) {
+    return keepOneTab(tabs);
+  }
+  if (changedUrl && !allowedPage(changedUrl, config)) {
+    return sendBack(tab.id, config);
+  }
+  return undefined;
+}
+
 function answerApi(message, sendResponse) {
   const api = globalThis.steamosYtApi;
   if (!Object.hasOwn(api, message.method)) {
@@ -137,6 +208,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     closeKiosk().catch((error) => console.warn('steamos-yt: could not close the kiosk', error));
     return false;
   }
+  if (message?.type === 'settings') {
+    loadConfig().then((config) => sendResponse({ deArrowThumbnails: Boolean(config.deArrowThumbnails) }));
+    return true;
+  }
   if (message?.type === 'api') {
     return answerApi(message, sendResponse);
   }
@@ -146,15 +221,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 chrome.tabs.onCreated.addListener((tab) => {
   if (isSplash(tab)) {
     leaveSplash();
-  } else {
-    guardPopup(tab);
   }
+  enforceSiteLock(tab).catch((error) => console.debug('steamos-yt: new tab check skipped', error));
 });
 
 chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
-  if (change.url && isSplash(tab)) {
+  if (!change.url) {
+    return;
+  }
+  if (isSplash(tab)) {
     leaveSplash();
   }
+  enforceSiteLock(tab, change.url).catch((error) => console.debug('steamos-yt: page check skipped', error));
 });
 
 chrome.runtime.onStartup.addListener(leaveSplash);

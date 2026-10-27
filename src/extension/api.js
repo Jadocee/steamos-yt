@@ -9,6 +9,7 @@
  * Dislike counts: https://returnyoutubedislike.com.
  */
 const SPONSORBLOCK_SERVER = 'https://sponsor.ajay.app';
+const DEARROW_THUMBNAIL_SERVER = 'https://dearrow-thumb.ajay.app';
 const RETURN_DISLIKE_SERVER = 'https://returnyoutubedislikeapi.com';
 const VIDEO_ID = /^[\w-]{11}$/;
 const SEGMENT_CATEGORIES = new Set([
@@ -101,6 +102,24 @@ async function brandings(videoIds, budgetMs) {
   return { ...found };
 }
 
+/**
+ * DeArrow thumbnail URLs for the videos whose lookups finish within the budget:
+ * a URL, or null when DeArrow keeps YouTube's thumbnail. Videos still being
+ * looked up, or whose lookup failed, are left out so the caller can ask again.
+ */
+async function thumbnails(videoIds, budgetMs) {
+  const ids = [...new Set(videoIds)].filter((id) => VIDEO_ID.test(id)).slice(0, 300);
+  const urls = {};
+  const lookups = ids.map((id) => branding(id).then((value) => {
+    urls[id] = value && value.thumbnailTime !== null
+      ? `${DEARROW_THUMBNAIL_SERVER}/api/v1/getThumbnail?videoID=${id}&time=${value.thumbnailTime}`
+      : null;
+  }, () => {}));
+  const budget = Math.min(Math.max(budgetMs, 100), 5000);
+  await Promise.race([Promise.all(lookups), new Promise((resolve) => setTimeout(resolve, budget))]);
+  return { ...urls };
+}
+
 function votes(videoId) {
   if (!VIDEO_ID.test(videoId)) {
     return Promise.resolve(null);
@@ -114,5 +133,6 @@ function votes(videoId) {
 globalThis.steamosYtApi = Object.freeze({
   segments: ({ videoId, categories }) => segments(String(videoId), Array.isArray(categories) ? categories.map(String) : []),
   brandings: ({ videoIds, budgetMs }) => brandings(Array.isArray(videoIds) ? videoIds.map(String) : [], Number(budgetMs) || 1500),
+  thumbnails: ({ videoIds, budgetMs }) => thumbnails(Array.isArray(videoIds) ? videoIds.map(String) : [], Number(budgetMs) || 5000),
   votes: ({ videoId }) => votes(String(videoId)),
 });

@@ -67,6 +67,7 @@ load_config() {
     YT_MAX_RESOLUTION="auto"
     YT_BLOCK_CODECS=""
     YT_OZONE_PLATFORM="auto"
+    YT_WINDOW=""
     YT_KIOSK="1"
     YT_LANG=""
     YT_KEEP_STEAM_ENV="0"
@@ -76,9 +77,30 @@ load_config() {
     YT_DEARROW_THUMBNAILS="1"
     YT_RETURN_DISLIKES="1"
     YT_PROFILE_PER_STEAM_ACCOUNT="1"
+    YT_BLOCK_OTHER_SITES="1"
+    YT_ALLOWED_SITES=""
 
-    local file="$CONFIG_DIR/steamos-yt.conf" line key value
-    [[ -r $file ]] || return 0
+    local file="$CONFIG_DIR/steamos-yt.conf"
+    if [[ -r $file ]]; then
+        read_config "$file"
+    fi
+    case $YT_WINDOW in
+        kiosk | app | browser) ;;
+        "")
+            YT_WINDOW=kiosk
+            if [[ $YT_KIOSK == 0 ]]; then
+                YT_WINDOW=browser
+            fi
+            ;;
+        *)
+            warn "unknown YT_WINDOW=$YT_WINDOW; using kiosk"
+            YT_WINDOW=kiosk
+            ;;
+    esac
+}
+
+read_config() {
+    local file=$1 line key value
     while IFS= read -r line || [[ -n $line ]]; do
         line=${line#"${line%%[![:space:]]*}"}
         [[ -z $line || $line == \#* ]] && continue
@@ -98,7 +120,7 @@ load_config() {
             YT_URL | YT_IDENTITY | YT_USER_AGENT | YT_CONTROLLER | YT_EXIT_COMBO | YT_CURSOR_HIDE_SECONDS | \
                 YT_MAX_RESOLUTION | YT_BLOCK_CODECS | YT_OZONE_PLATFORM | YT_KIOSK | YT_LANG | YT_KEEP_STEAM_ENV | \
                 YT_SPONSORBLOCK | YT_SPONSORBLOCK_CATEGORIES | YT_DEARROW | YT_DEARROW_THUMBNAILS | YT_RETURN_DISLIKES | \
-                YT_PROFILE_PER_STEAM_ACCOUNT)
+                YT_PROFILE_PER_STEAM_ACCOUNT | YT_BLOCK_OTHER_SITES | YT_ALLOWED_SITES | YT_WINDOW)
                 printf -v "$key" '%s' "$value"
                 ;;
             *) warn "ignoring unknown setting $key in $file" ;;
@@ -122,6 +144,8 @@ prepare_args() {
         --dearrow "$YT_DEARROW"
         --dearrow-thumbnails "$YT_DEARROW_THUMBNAILS"
         --return-dislikes "$YT_RETURN_DISLIKES"
+        --block-other-sites "$YT_BLOCK_OTHER_SITES"
+        --allowed-sites "$YT_ALLOWED_SITES"
         --extension "$APP_HOME/extension"
     )
 }
@@ -248,7 +272,7 @@ build_flags() {
     if [[ -n $user_agent ]]; then
         built+=("--user-agent=$user_agent")
     fi
-    if [[ $YT_KIOSK != 0 ]]; then
+    if [[ $YT_WINDOW == kiosk ]]; then
         built+=(--kiosk)
     fi
     case $YT_OZONE_PLATFORM in
@@ -326,6 +350,9 @@ cmd_launch() {
     fi
     printf '[%(%F %T)T] steamos-yt %s launching Helium %s for %s\n' -1 "$STEAMOS_YT_VERSION" \
         "$(helium_current_version || echo '?')" "$url"
+    if [[ $YT_WINDOW == app ]]; then
+        open_url="--app=$open_url"
+    fi
     printf '  %q\n' "$wrapper" "${flags[@]}"
     exec "$wrapper" "${flags[@]}" "$open_url"
 }
@@ -446,6 +473,16 @@ profile_mode() {
         printf 'separate for each Steam account'
     else
         printf 'shared by all Steam accounts'
+    fi
+}
+
+site_summary() {
+    if [[ $(on_off "$YT_BLOCK_OTHER_SITES") == off ]]; then
+        printf 'any site may open'
+    elif [[ -n $YT_ALLOWED_SITES ]]; then
+        printf 'YouTube, its sign-in pages and %s only' "$YT_ALLOWED_SITES"
+    else
+        printf 'YouTube and its sign-in pages only'
     fi
 }
 
@@ -611,6 +648,7 @@ cmd_install() {
     info "Desktop: applications menu → $name, or run $LAUNCHER"
     info "Pad:     D-pad/stick move · A select · B back · hold View + Menu to exit"
     info "Sign-in: $(profile_mode)"
+    info "Sites:   $(site_summary)"
     info "Extras:  $(addon_summary)"
     info "Tweaks:  $CONFIG_DIR/steamos-yt.conf and flags.conf"
 }
@@ -796,6 +834,8 @@ cmd_doctor() {
     fi
     printf '  %-12s %s\n' "Installed" "$(installed_versions | paste -sd' ' - || true)"
     printf '  %-12s %s\n' "Add-ons" "$(addon_summary)"
+    printf '  %-12s %s\n' "Sites" "$(site_summary)"
+    printf '  %-12s %s\n' "Window" "$YT_WINDOW"
     printf '  %-12s %s\n' "User agent" "$(helper identity --identity "$YT_IDENTITY" --user-agent "$YT_USER_AGENT" |
         python3 -c 'import json, sys; print(json.load(sys.stdin)["user_agent"] or "(Helium default)")' 2>/dev/null || echo '?')"
     if root=$(helper steam-root 2>/dev/null); then

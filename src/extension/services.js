@@ -3,10 +3,11 @@
  *
  * The official extensions read the desktop site's page structure, which the TV
  * interface (Leanback) does not use. These integrations work with Leanback
- * directly: DeArrow titles and thumbnails and Return YouTube Dislike counts are
- * written into the innertube responses Leanback renders from, and SponsorBlock
- * follows the <video> element on Leanback's #/watch route. Every network
- * request runs in the extension's service worker (see api.js).
+ * directly: DeArrow titles and Return YouTube Dislike counts are written into
+ * the innertube responses Leanback renders from, DeArrow thumbnails are laid
+ * over YouTube's own (see thumbnails.js), and SponsorBlock follows the <video>
+ * element on Leanback's #/watch route. Every network request runs in the
+ * extension's service worker (see api.js).
  */
 (() => {
   'use strict';
@@ -23,7 +24,6 @@
   const DEARROW_BUDGET_MS = 1500;
   const DISLIKES_TIMEOUT_MS = 1500;
   const SKIP_WINDOW_S = 2;
-  const DEARROW_THUMBNAILS = 'https://dearrow-thumb.ajay.app/api/v1/getThumbnail';
   const PROGRESS_BAR = 'ytlr-progress-bar [idomkey="slider"]';
   const CHAPTER_PIECES = 'ytlr-multi-markers-player-bar-renderer [idomkey="progress-bar"] > [idomkey^="chapter-"]';
   const SEGMENTS = {
@@ -126,20 +126,9 @@
       const brandings = await rpc('brandings', { videoIds, budgetMs: DEARROW_BUDGET_MS }).catch(() => ({}));
       let changed = false;
       for (const tile of tiles) {
-        const branding = brandings[tile.contentId];
-        if (!branding) {
-          continue;
-        }
-        if (branding.title) {
-          changed = setText(tile.metadata?.tileMetadataRenderer?.title, branding.title) || changed;
-        }
-        const thumbnails = tile.header?.tileHeaderRenderer?.thumbnail?.thumbnails;
-        if (config.deArrowThumbnails && branding.thumbnailTime !== null && Array.isArray(thumbnails)) {
-          const url = `${DEARROW_THUMBNAILS}?videoID=${tile.contentId}&time=${branding.thumbnailTime}`;
-          for (const thumbnail of thumbnails) {
-            thumbnail.url = url;
-          }
-          changed = thumbnails.length > 0 || changed;
+        const title = brandings[tile.contentId]?.title;
+        if (title) {
+          changed = setText(tile.metadata?.tileMetadataRenderer?.title, title) || changed;
         }
       }
       return changed;

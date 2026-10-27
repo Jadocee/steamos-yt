@@ -5,7 +5,8 @@ It serves a page at www.youtube.com/tv that inspects what the companion
 extension changed, posts the findings back, and then asks the kiosk to exit
 through one of the supported paths (Leanback's EXIT_APP command, the controller
 combo or window.close). The same server answers for sponsor.ajay.app,
-dearrow-thumb.ajay.app and returnyoutubedislikeapi.com.
+dearrow-thumb.ajay.app and returnyoutubedislikeapi.com, and logs any request
+for blocked.example, a site the kiosk must never load.
 """
 
 import argparse
@@ -22,6 +23,9 @@ SKIPPED = "dQw4w9WgXcQ"
 ORIGINAL = "jNQXAC9IVRw"
 DOWNVOTED = "9bZkp7q19f0"
 RUNS = "kJQP7kiw5Fk"
+BROKEN = "brokenThumb"
+BLOCKED_HOST = "blocked.example"
+POLICY = "img-src 'self' https://i.ytimg.com; connect-src 'self'; require-trusted-types-for 'script'"
 
 
 def png_pixel():
@@ -73,6 +77,7 @@ BROWSE = {
                                                     tile(ORIGINAL, "Original title stays"),
                                                     tile(DOWNVOTED, "Downvoted stays"),
                                                     tile(RUNS, "RUNS TITLE", runs=True),
+                                                    tile(BROKEN, "Thumbnail fails to load"),
                                                 ]
                                             }
                                         }
@@ -146,6 +151,12 @@ BRANDING = {
         "randomTime": 0.5,
         "videoDuration": 50,
     },
+    BROKEN: {
+        "titles": [],
+        "thumbnails": [{"timestamp": 7.0, "original": False, "votes": 2, "locked": False}],
+        "randomTime": 0.5,
+        "videoDuration": 50,
+    },
 }
 
 SEGMENTS = [
@@ -161,15 +172,42 @@ PAGE = r"""<!doctype html>
 const commands = [];
 window._yttv = { app: { instance: { resolveCommand(command) { commands.push(command); return 'native:' + Object.keys(command)[0]; } } } };
 
-(async () => {
-  const exitMode = new URLSearchParams(location.search).get('exit') || 'leanback';
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  const post = (path, body) => fetch(path, { method: 'POST', body: JSON.stringify(body) });
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const post = (path, body) => fetch(path, { method: 'POST', body: JSON.stringify(body) });
+const exitThroughLeanback = () => window._yttv.app.instance.resolveCommand({ commandExecutorCommand: { commands: [{ signalAction: { signal: 'EXIT_APP' } }] } });
+const params = new URLSearchParams(location.search);
+const violations = [];
+document.addEventListener('securitypolicyviolation', (event) => violations.push({ directive: event.effectiveDirective, uri: event.blockedURI }));
+
+async function siteLockTest() {
+  const stage = sessionStorage.getItem('steamos-yt-lock');
+  if (stage === null) {
+    const popup = window.open('https://www.youtube.com/popup', '_blank');
+    await sleep(1500);
+    sessionStorage.setItem('steamos-yt-lock', JSON.stringify({ popupOpened: popup !== null, popupClosed: popup === null || popup.closed }));
+    location.href = 'https://blocked.example/leak';
+    return;
+  }
+  sessionStorage.removeItem('steamos-yt-lock');
+  await post('/report-lock', { ...JSON.parse(stage), returned: true, url: location.href });
+  for (let waited = 0; !window._yttv.app.instance.resolveCommand.__steamosYt && waited < 5000; waited += 50) {
+    await sleep(50);
+  }
+  exitThroughLeanback();
+}
+
+if (params.get('lock') === '1') {
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) {
+      siteLockTest();
+    }
+  });
+  siteLockTest().catch((error) => fetch('/report-error', { method: 'POST', body: String(error && error.stack || error) }));
+} else (async () => {
+  const exitMode = params.get('exit') || 'leanback';
   const keys = [];
-  const violations = [];
   document.addEventListener('keydown', (event) => keys.push(['down', event.keyCode]));
   document.addEventListener('keyup', (event) => keys.push(['up', event.keyCode]));
-  document.addEventListener('securitypolicyviolation', (event) => violations.push(event.blockedURI));
 
   const result = {
     exitMode,
@@ -235,6 +273,45 @@ window._yttv = { app: { instance: { resolveCommand(command) { commands.push(comm
     title: tile.metadata.tileMetadataRenderer.title.simpleText ?? tile.metadata.tileMetadataRenderer.title.runs.map((run) => run.text).join(''),
     thumbnails: tile.header.tileHeaderRenderer.thumbnail.thumbnails.map((thumbnail) => thumbnail.url),
   }));
+
+  const shelf = document.createElement('div');
+  document.body.append(shelf);
+  const thumbnailElements = new Map(tiles.map((tile) => {
+    const element = document.createElement('ytlr-thumbnail-details');
+    element.style.cssText = 'display:block;width:160px;height:90px';
+    element.style.backgroundImage = `url("${tile.header.tileHeaderRenderer.thumbnail.thumbnails[0].url}")`;
+    shelf.append(element);
+    return [tile.contentId, element];
+  }));
+  const overlay = (element) => {
+    const image = element.querySelector('img.steamos-yt-dearrow');
+    if (!image) {
+      return null;
+    }
+    const outer = element.getBoundingClientRect();
+    const inner = image.getBoundingClientRect();
+    return {
+      src: image.src,
+      shown: image.style.opacity === '1' && image.complete && image.naturalWidth > 0,
+      covers: ['left', 'top', 'width', 'height'].every((side) => Math.abs(outer[side] - inner[side]) < 1),
+    };
+  };
+  const until = async (check, ms) => {
+    const end = Date.now() + ms;
+    while (!check() && Date.now() < end) {
+      await sleep(50);
+    }
+  };
+  const recycled = thumbnailElements.get('__SKIPPED__');
+  await until(() => overlay(recycled)?.shown, result.config?.deArrowThumbnails ? 4000 : 1000);
+  await sleep(300);
+  result.overlays = Object.fromEntries([...thumbnailElements].map(([id, element]) => [id, overlay(element)]));
+  recycled.style.backgroundImage = 'url("https://i.ytimg.com/vi/__ORIGINAL__/mqdefault.jpg")';
+  await sleep(200);
+  result.recycledToOther = overlay(recycled);
+  recycled.style.backgroundImage = 'url("https://i.ytimg.com/vi/__SKIPPED__/hqdefault.jpg")';
+  await until(() => overlay(recycled)?.shown, result.config?.deArrowThumbnails ? 2000 : 300);
+  result.recycledBack = overlay(recycled);
   const next = await xhrJson('/youtubei/v1/next', 'property');
   const like = next.transportControls.transportControlsRenderer.engagementActions[0].button.likeButtonRenderer;
   const factoids = next.engagementPanels[0].engagementPanelSectionListRenderer.content.structuredDescriptionContentRenderer
@@ -277,12 +354,12 @@ window._yttv = { app: { instance: { resolveCommand(command) { commands.push(comm
   } else {
     const instance = window._yttv.app.instance;
     await post('/report-hook', { wrapped: Boolean(instance.resolveCommand.__steamosYt), passthrough: instance.resolveCommand({ browseEndpoint: {} }) });
-    instance.resolveCommand({ commandExecutorCommand: { commands: [{ signalAction: { signal: 'EXIT_APP' } }] } });
+    exitThroughLeanback();
   }
 })().catch((error) => fetch('/report-error', { method: 'POST', body: String(error && error.stack || error) }));
 </script>
 </body></html>
-""".replace("__SKIPPED__", SKIPPED)
+""".replace("__SKIPPED__", SKIPPED).replace("__ORIGINAL__", ORIGINAL)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -331,14 +408,20 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(404)
         if host == "dearrow-thumb.ajay.app":
             self._log_api(url)
+            if query.get("videoID") == [BROKEN]:
+                return self._send(404)
             return self._send(200, PIXEL, "image/png")
+        if host == BLOCKED_HOST:
+            with (self.output / "leaks.log").open("a") as log:
+                log.write(f"{self.path}\n")
+            return self._send(200, b"this page must never load", "text/plain")
         if url.path.startswith("/tv"):
             with (self.output / "tv-requests.log").open("a") as log:
                 log.write(f"{self.headers.get('Cache-Control', '-')} {self.path}\n")
             headers = self.output / "page-headers.json"
             if not headers.exists():
                 headers.write_text(json.dumps(self._headers(), indent=2))
-            extra = {"Content-Security-Policy": "img-src 'self' https://i.ytimg.com; connect-src 'self'"}
+            extra = {"Content-Security-Policy": POLICY}
             if query.get("probe"):
                 extra["Set-Cookie"] = f"probe={query['probe'][0]}; Path=/; Max-Age=3600; SameSite=Lax"
             return self._send(200, PAGE.encode(), "text/html; charset=utf-8", extra)
@@ -356,7 +439,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(NEXT)
         if path == "/headers":
             return self._json(self._headers())
-        names = {"/report": "report.json", "/report-hook": "hook.json", "/report-error": "error.txt"}
+        names = {"/report": "report.json", "/report-hook": "hook.json", "/report-lock": "lock.json", "/report-error": "error.txt"}
         if path in names:
             (self.output / names[path]).write_bytes(body)
             return self._send(204)

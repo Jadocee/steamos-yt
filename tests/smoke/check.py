@@ -6,7 +6,7 @@ import re
 import sys
 from pathlib import Path
 
-from server import DOWNVOTED, ORIGINAL, RUNS, SKIPPED
+from server import BLOCKED_HOST, BROKEN, DOWNVOTED, ORIGINAL, RUNS, SKIPPED
 
 STARBOARD = 0x8000
 DOWN, UP = STARBOARD + 13, STARBOARD + 12
@@ -25,6 +25,13 @@ def main() -> int:
 
     if (output / "error.txt").exists():
         failures.append("page error: " + (output / "error.txt").read_text())
+    expect(not (output / "leaks.log").exists(), f"{BLOCKED_HOST} was loaded despite the site lock")
+    if scenario == "site-lock":
+        lock = json.loads((output / "lock.json").read_text())
+        expect(lock["popupOpened"], "the pop-up never opened, so closing it was not tested")
+        expect(lock["popupClosed"], "the pop-up window stayed open")
+        expect(lock["returned"], f"the kiosk did not return to YouTube after the blocked page: {lock}")
+        return report_failures(failures)
     report = json.loads((output / "report.json").read_text())
     page_headers = json.loads((output / "page-headers.json").read_text())
 
@@ -56,13 +63,21 @@ def main() -> int:
 
     tiles = {tile["id"]: tile for tile in report["deArrow"]}
     expect(tiles[SKIPPED]["title"] == "An Honest Title", f"DeArrow title: {tiles[SKIPPED]['title']}")
+    expect(all("i.ytimg.com" in url for url in tiles[SKIPPED]["thumbnails"]), "YouTube's thumbnail URLs must stay in its data")
+    violations = report["cspViolations"]
+    expect(not report["thumbnailLoads"], "the page itself must still be unable to load DeArrow images")
+    expect(any(item["directive"] == "img-src" and "dearrow-thumb" in item["uri"] for item in violations), f"policy not enforced: {violations}")
+    expect(not any(item["directive"] == "require-trusted-types-for" for item in violations), f"Trusted Types violations: {violations}")
+    overlays = report["overlays"]
     if scenario == "titles-only":
-        expect(all("i.ytimg.com" in url for url in tiles[SKIPPED]["thumbnails"]), "titles-only mode must keep thumbnails")
-        expect(not report["thumbnailLoads"], "YouTube's CSP must still block DeArrow images in titles-only mode")
-        expect(any("dearrow-thumb" in uri for uri in report["cspViolations"]), f"CSP violations: {report['cspViolations']}")
+        expect(not any(overlays.values()) and not report["recycledBack"], f"titles-only mode must not lay thumbnails: {overlays}")
     else:
-        expect(tiles[SKIPPED]["thumbnails"] == [DEARROW_THUMBNAIL] * 2, f"DeArrow thumbnails: {tiles[SKIPPED]['thumbnails']}")
-        expect(report["thumbnailLoads"], f"DeArrow thumbnail blocked; CSP violations: {report['cspViolations']}")
+        laid = {"src": DEARROW_THUMBNAIL, "shown": True, "covers": True}
+        expect(overlays[SKIPPED] == laid, f"DeArrow thumbnail over YouTube's: {overlays[SKIPPED]}")
+        expect(overlays[ORIGINAL] is None and overlays[DOWNVOTED] is None, f"no DeArrow thumbnail expected: {overlays}")
+        expect(overlays[BROKEN] is None, f"a DeArrow thumbnail that fails to load must leave YouTube's: {overlays[BROKEN]}")
+        expect(report["recycledToOther"] is None, f"a recycled thumbnail kept the old DeArrow image: {report['recycledToOther']}")
+        expect(report["recycledBack"] == laid, f"DeArrow thumbnail after recycling: {report['recycledBack']}")
     expect(tiles[RUNS]["title"] == "Calm runs title", f"DeArrow title in runs: {tiles[RUNS]['title']}")
     expect(tiles[ORIGINAL]["title"] == "Original title stays", "an 'original' DeArrow vote must keep the title")
     expect(all("i.ytimg.com" in url for url in tiles[ORIGINAL]["thumbnails"]), "an 'original' vote must keep the thumbnail")
@@ -83,6 +98,9 @@ def main() -> int:
     expect(any(re.search(r"/api/skipSegments/[0-9a-f]{4}\?", line) for line in lookups), f"SponsorBlock lookup: {lookups}")
     expect(any(re.search(r"/api/branding/[0-9a-f]{4}\?", line) for line in lookups), f"DeArrow lookup: {lookups}")
     expect(not any(SKIPPED in line for line in lookups), "SponsorBlock/DeArrow lookups must use hash prefixes, not video IDs")
+    if scenario != "titles-only":
+        images = [line for line in api_log if line.startswith("dearrow-thumb.ajay.app")]
+        expect(any(f"videoID={BROKEN}" in line for line in images), f"the failing DeArrow thumbnail was never requested: {images}")
 
     if expected_cookie != "*":
         cookies = dict(part.strip().split("=", 1) for part in page_headers.get("cookie", "").split(";") if "=" in part)
@@ -94,7 +112,10 @@ def main() -> int:
         hook = json.loads((output / "hook.json").read_text())
         expect(hook["wrapped"], "Leanback resolveCommand was not wrapped")
         expect(hook["passthrough"] == "native:browseEndpoint", f"other commands must pass through: {hook}")
+    return report_failures(failures)
 
+
+def report_failures(failures) -> int:
     for failure in failures:
         print(f"    FAIL {failure}")
     return 1 if failures else 0

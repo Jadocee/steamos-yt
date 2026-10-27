@@ -34,29 +34,55 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual(hints["sec-ch-ua-mobile"], "?0")
         self.assertEqual(hints["sec-ch-ua-full-version-list"], '"SteamOSYT";v="27.lts.3"')
 
-    def test_dnr_rules(self):
-        self.assertEqual(identity.dnr_rules(None), [])
-        [rule] = identity.dnr_rules(identity.cobalt_identity(machine="x86_64"))
-        self.assertEqual(rule["action"]["type"], "modifyHeaders")
+    def test_client_hint_rule(self):
+        self.assertEqual(identity.client_hint_rules(None), [])
+        [rule] = identity.client_hint_rules(identity.cobalt_identity(machine="x86_64"))
+        self.assertEqual((rule["id"], rule["action"]["type"]), (1, "modifyHeaders"))
         self.assertIn("main_frame", rule["condition"]["resourceTypes"])
         self.assertIn("youtube.com", rule["condition"]["requestDomains"])
         headers = {item["header"]: item for item in rule["action"]["requestHeaders"]}
         self.assertEqual(headers["sec-ch-ua-platform"]["operation"], "set")
 
-    def test_csp_rule_follows_dearrow_thumbnails(self):
+    def test_no_rule_touches_the_page_security_policy(self):
         ident = identity.cobalt_identity(machine="x86_64")
-        [_, csp] = identity.dnr_rules(ident, identity.PageSettings())
-        headers = {item["header"]: item["operation"] for item in csp["action"]["responseHeaders"]}
-        self.assertEqual(headers, {"content-security-policy": "remove", "content-security-policy-report-only": "remove"})
-        pattern = re.compile(csp["condition"]["regexFilter"])
-        self.assertTrue(pattern.match("https://www.youtube.com/tv"))
-        self.assertTrue(pattern.match("https://www.youtube.com/tv?env=1#/watch?v=x"))
-        self.assertFalse(pattern.match("https://www.youtube.com/tv_static/app.js"))
-        self.assertFalse(pattern.match("https://www.youtube.com/watch?v=x"))
-        for settings in (identity.PageSettings(dearrow_thumbnails=False), identity.PageSettings(dearrow=False)):
-            self.assertEqual([rule["id"] for rule in identity.dnr_rules(ident, settings)], [1])
-        self.assertFalse(identity.page_config(None, identity.PageSettings(dearrow=False))["headerRules"])
+        for settings in (identity.PageSettings(), identity.PageSettings(dearrow_thumbnails=False)):
+            for rule in identity.dnr_rules(ident, settings, "https://www.youtube.com/tv"):
+                self.assertNotIn("responseHeaders", rule["action"])
+        self.assertTrue(identity.page_config(None, identity.PageSettings())["deArrowThumbnails"])
         self.assertFalse(identity.page_config(None, identity.PageSettings(dearrow=False))["deArrowThumbnails"])
+
+    def test_site_lock_blocks_other_top_level_pages(self):
+        settings = identity.PageSettings(allowed_sites=["example.org"])
+        block, captcha = identity.site_lock_rules(settings, "https://tv.example.net/start")
+        self.assertEqual((block["id"], block["action"]["type"], block["condition"]["resourceTypes"]), (2, "block", ["main_frame"]))
+        excluded = block["condition"]["excludedRequestDomains"]
+        for site in ("youtube.com", "youtu.be", "youtubekids.com", "accounts.google.com", "consent.google.com",
+                     "tv.example.net", "example.org"):
+            self.assertIn(site, excluded)
+        self.assertNotIn("google.com", excluded)
+        self.assertEqual((captcha["id"], captcha["action"]["type"]), (3, "allow"))
+        self.assertEqual(captcha["priority"], block["priority"])
+        [hints] = identity.client_hint_rules(identity.cobalt_identity(machine="x86_64"))
+        self.assertGreater(hints["priority"], captcha["priority"])
+        self.assertEqual(captcha["condition"]["urlFilter"], "||google.com/sorry/")
+        self.assertEqual(identity.site_lock_rules(identity.PageSettings(block_other_sites=False)), [])
+        self.assertEqual(identity.site_lock_rules(None), [])
+
+    def test_allowed_sites_skip_ones_already_covered(self):
+        settings = identity.PageSettings(allowed_sites=["music.youtube.com", "example.org"])
+        sites = identity.allowed_sites(settings, "https://www.youtube.com/tv")
+        self.assertEqual(sites, list(identity.YOUTUBE_SITES) + ["example.org"])
+        config = identity.page_config(None, settings, "https://www.youtube.com/tv")
+        self.assertEqual((config["blockOtherSites"], config["allowedSites"]), (True, sites))
+
+    def test_site_normalisation(self):
+        self.assertEqual(
+            identity.normalise_sites(["https://www.YouTubeKids.com/tv", "*.Example.org", " ", "example.org/path", "a.b.co"]),
+            ["www.youtubekids.com", "example.org", "a.b.co"],
+        )
+        for bad in (["localhost"], ["under_score.com"], ["-dash.com"], ["http://"]):
+            with self.assertRaises(ValueError):
+                identity.normalise_sites(bad)
 
     def test_resolution_and_codec_normalisation(self):
         self.assertEqual(identity.normalise_resolution("1080P"), "1920x1080")
@@ -99,7 +125,7 @@ class IdentityTests(unittest.TestCase):
             self.assertEqual(config["maxResolution"], "3840x2160")
             self.assertEqual(config["identity"]["platform"], "Starboard")
             rules = json.loads((directory / "rules.json").read_text())
-            self.assertEqual([rule["id"] for rule in rules], [1, 2])
+            self.assertEqual([rule["id"] for rule in rules], [1, 2, 3])
             self.assertTrue(config["headerRules"])
             self.assertEqual(json.loads((directory / "config.json").read_text()), config)
 
@@ -144,12 +170,12 @@ class LaunchPrepareTests(unittest.TestCase):
             config = json.loads(re.search(r"Object\.freeze\((.*)\);", (Path(tmp) / "config.js").read_text(), re.S).group(1))
             self.assertEqual(config["targetUrl"], target)
 
-    def test_splash_only_when_header_rules_exist(self):
+    def test_splash_only_while_client_hints_are_rewritten(self):
         url = "https://www.youtube.com/tv"
         with tempfile.TemporaryDirectory() as tmp:
-            _, out, _ = self.run_cli("launch-prepare", "--extension", tmp, "--url", url, "--user-agent", "X/1", "--dearrow", "0")
-            self.assertEqual(out.splitlines(), ["X/1", url, ""])
             _, out, _ = self.run_cli("launch-prepare", "--extension", tmp, "--url", url, "--user-agent", "X/1")
+            self.assertEqual(out.splitlines(), ["X/1", url, ""])
+            _, out, _ = self.run_cli("launch-prepare", "--extension", tmp, "--url", url)
             self.assertTrue(out.splitlines()[1].startswith("data:text/html"))
 
     def test_custom_user_agent_disables_client_hints(self):
@@ -157,7 +183,7 @@ class LaunchPrepareTests(unittest.TestCase):
             status, out, _ = self.run_cli("launch-prepare", "--extension", tmp, "--user-agent", "Custom/1.0")
             self.assertEqual((status, out.splitlines()), (0, ["Custom/1.0", "", ""]))
             rules = json.loads((Path(tmp) / "rules.json").read_text())
-            self.assertEqual([rule["id"] for rule in rules], [2])
+            self.assertEqual([rule["id"] for rule in rules], [2, 3])
 
     def test_browser_identity_prints_nothing(self):
         status, out, _ = self.run_cli("launch-prepare", "--identity", "browser")
@@ -177,6 +203,22 @@ class LaunchPrepareTests(unittest.TestCase):
                 (config["sponsorBlock"], config["deArrow"], config["returnDislikes"], config["sponsorBlockCategories"]),
                 (False, False, False, ["sponsor", "intro"]),
             )
+
+    def test_site_lock_switches(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            status, _, err = self.run_cli(
+                "launch-prepare", "--extension", tmp, "--url", "https://www.youtube.com/tv",
+                "--allowed-sites", "youtubekids.com, not_a_site, https://Example.org/x",
+            )
+            self.assertEqual(status, 0)
+            self.assertIn("invalid site not_a_site", err)
+            config = json.loads((Path(tmp) / "config.json").read_text())
+            self.assertTrue(config["blockOtherSites"])
+            self.assertIn("example.org", config["allowedSites"])
+            self.assertNotIn("not_a_site", config["allowedSites"])
+            self.run_cli("launch-prepare", "--extension", tmp, "--block-other-sites", "0")
+            self.assertEqual(json.loads((Path(tmp) / "rules.json").read_text())[-1]["id"], 1)
+            self.assertFalse(json.loads((Path(tmp) / "config.json").read_text())["blockOtherSites"])
 
     def test_invalid_settings_fall_back_with_warnings(self):
         with tempfile.TemporaryDirectory() as tmp:

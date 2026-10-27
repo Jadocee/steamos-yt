@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # End-to-end smoke test: installs into a throwaway HOME, launches the kiosk
 # against a local HTTPS stand-in for www.youtube.com/tv, and checks the
-# companion extension, the device identity, every exit path and the separate
-# profile for each Steam account.
+# companion extension, the device identity, every exit path, the separate
+# profile for each Steam account and the site lock.
 #
 #   tests/smoke/run.sh [helium-<version>-x86_64_linux.tar.xz]
 #
@@ -54,7 +54,7 @@ if [[ -z ${DISPLAY:-} ]]; then
     sleep 1
 fi
 
-HOSTS=(www.youtube.com sponsor.ajay.app dearrow-thumb.ajay.app returnyoutubedislikeapi.com)
+HOSTS=(www.youtube.com sponsor.ajay.app dearrow-thumb.ajay.app returnyoutubedislikeapi.com blocked.example)
 san=$(printf 'DNS:%s,' "${HOSTS[@]}")
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=www.youtube.com" \
     -addext "subjectAltName=${san%,}" -keyout "$WORK/key.pem" -out "$WORK/cert.pem" >/dev/null 2>&1
@@ -93,16 +93,25 @@ cp "$CONFIG" "$WORK/steamos-yt.conf"
 failed=0
 
 run_scenario() {
-    local scenario=$1 mode=$2 cookie=$3 pid
+    local scenario=$1 mode=$2 cookie=$3 pid report=report.json
+    local query="exit=$mode&probe=$scenario" flags=("${browser_flags[@]}")
     shift 3
     echo "==> Scenario: $scenario (exit via $mode${1:+; $*})"
     rm -f "$OUTPUT"/*
     cp "$WORK/steamos-yt.conf" "$CONFIG"
-    [[ $scenario == titles-only ]] && echo "YT_DEARROW_THUMBNAILS=0" >>"$CONFIG"
-    run_clean "$LAUNCHER" launch "$@" "https://www.youtube.com/tv?exit=$mode&probe=$scenario" -- "${browser_flags[@]}" &
+    case $scenario in
+        titles-only) echo "YT_DEARROW_THUMBNAILS=0" >>"$CONFIG" ;;
+        combo) echo "YT_WINDOW=app" >>"$CONFIG" ;;
+        site-lock)
+            report=lock.json
+            query+="&lock=1"
+            flags+=(--disable-popup-blocking)
+            ;;
+    esac
+    run_clean "$LAUNCHER" launch "$@" "https://www.youtube.com/tv?$query" -- "${flags[@]}" &
     pid=$!
     PIDS+=("$pid")
-    if ! wait_for 40 test -s "$OUTPUT/report.json"; then
+    if ! wait_for 40 test -s "$OUTPUT/$report"; then
         echo "    FAIL no report from the page; launch log:"
         tail -n 30 "$HOME_DIR/.local/state/steamos-yt/launch.log" || true
         failed=1
@@ -117,7 +126,7 @@ run_scenario() {
     fi
     stop_kiosk "$pid"
     if python3 "$ROOT/tests/smoke/check.py" "$OUTPUT" "$scenario" "$mode" "$cookie"; then
-        echo "    ok: identity, controller, media, SponsorBlock, DeArrow, dislikes, exit hook and profile"
+        echo "    ok: page checks passed"
     else
         failed=1
     fi
@@ -153,6 +162,8 @@ run_scenario account-a-again leanback account-a --steam-account 111
 expect_profile absent profile
 expect_profile present profiles/111
 expect_profile present profiles/222
+
+run_scenario site-lock leanback "*"
 
 if ((failed)); then
     echo "==> Smoke test FAILED"

@@ -15,8 +15,8 @@ import platform
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
-from urllib.parse import quote
+from typing import Dict, Iterable, List, Optional
+from urllib.parse import quote, urlsplit
 
 from . import __version__
 from .fsutil import atomic_write_bytes, atomic_write_json
@@ -27,7 +27,17 @@ STARBOARD_API = 18
 BRAND = "SteamOSYT"
 APP_ID = "io.github.jadocee.SteamOSYT"
 
-TV_DOCUMENT_REGEX = r"^https://www\.youtube\.com/tv(?:[/?#]|$)"
+YOUTUBE_SITES = (
+    "youtube.com",
+    "youtu.be",
+    "youtube-nocookie.com",
+    "youtubekids.com",
+    "accounts.google.com",
+    "consent.google.com",
+    "policies.google.com",
+)
+CAPTCHA_URL_FILTER = "||google.com/sorry/"
+_SITE = re.compile(r"(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9-]{2,63}")
 GOOGLE_DOMAINS = [
     "youtube.com",
     "youtube-nocookie.com",
@@ -135,6 +145,8 @@ class PageSettings:
     dearrow: bool = True
     dearrow_thumbnails: bool = True
     return_dislikes: bool = True
+    block_other_sites: bool = True
+    allowed_sites: List[str] = field(default_factory=list)
 
 
 def cobalt_identity(
@@ -157,43 +169,84 @@ def cobalt_identity(
     return Identity(user_agent, BRAND, COBALT_VERSION.split(".")[0], full_version, "Starboard", architecture, bitness)
 
 
-def dnr_rules(identity: Optional[Identity], settings: Optional["PageSettings"] = None) -> List[dict]:
-    """declarativeNetRequest rules for the kiosk.
+def client_hint_rules(identity: Optional[Identity]) -> List[dict]:
+    """Rule 1: Client Hints that match ``identity`` on requests to Google's services."""
+    if identity is None:
+        return []
+    headers = [{"header": name, "operation": "set", "value": value} for name, value in identity.client_hints().items()]
+    return [
+        {
+            "id": 1,
+            "priority": 2,
+            "action": {"type": "modifyHeaders", "requestHeaders": headers},
+            "condition": {"requestDomains": GOOGLE_DOMAINS, "resourceTypes": RESOURCE_TYPES},
+        }
+    ]
 
-    Rule 1 aligns Client Hints with ``identity``. Rule 2 drops the TV page's
-    Content Security Policy, whose ``img-src`` list would otherwise block
-    DeArrow thumbnails; it only exists while DeArrow thumbnails are enabled.
+
+def allowed_sites(settings: "PageSettings", target_url: str = "") -> List[str]:
+    """Sites the kiosk may open: YouTube and its sign-in pages, the start page's site and the user's extras."""
+    sites = list(YOUTUBE_SITES)
+    host = (urlsplit(target_url).hostname or "").lower()
+    candidates = ([host] if host else []) + list(settings.allowed_sites)
+    for site in candidates:
+        if not any(site == known or site.endswith("." + known) for known in sites):
+            sites.append(site)
+    return sites
+
+
+def site_lock_rules(settings: Optional["PageSettings"], target_url: str = "") -> List[dict]:
+    """Rules 2 and 3: block pages from other sites, except Google's "unusual traffic" check.
+
+    Only top-level pages are blocked; YouTube's own images, scripts and video
+    come from many Google domains and are left alone. The exception shares the
+    block rule's priority, which it wins as an allow rule, and stays below the
+    Client Hints rule, which an allow rule of equal or higher priority would
+    otherwise switch off for that page.
     """
-    rules = []
-    if identity is not None:
-        headers = [
-            {"header": name, "operation": "set", "value": value}
-            for name, value in identity.client_hints().items()
-        ]
-        rules.append(
-            {
-                "id": 1,
-                "priority": 1,
-                "action": {"type": "modifyHeaders", "requestHeaders": headers},
-                "condition": {"requestDomains": GOOGLE_DOMAINS, "resourceTypes": RESOURCE_TYPES},
-            }
-        )
-    if settings is not None and settings.dearrow and settings.dearrow_thumbnails:
-        rules.append(
-            {
-                "id": 2,
-                "priority": 1,
-                "action": {
-                    "type": "modifyHeaders",
-                    "responseHeaders": [
-                        {"header": "content-security-policy", "operation": "remove"},
-                        {"header": "content-security-policy-report-only", "operation": "remove"},
-                    ],
-                },
-                "condition": {"regexFilter": TV_DOCUMENT_REGEX, "resourceTypes": RESOURCE_TYPES},
-            }
-        )
-    return rules
+    if settings is None or not settings.block_other_sites:
+        return []
+    return [
+        {
+            "id": 2,
+            "priority": 1,
+            "action": {"type": "block"},
+            "condition": {"resourceTypes": ["main_frame"], "excludedRequestDomains": allowed_sites(settings, target_url)},
+        },
+        {
+            "id": 3,
+            "priority": 1,
+            "action": {"type": "allow"},
+            "condition": {"urlFilter": CAPTCHA_URL_FILTER, "resourceTypes": ["main_frame"]},
+        },
+    ]
+
+
+def dnr_rules(
+    identity: Optional[Identity],
+    settings: Optional["PageSettings"] = None,
+    target_url: str = "",
+) -> List[dict]:
+    """declarativeNetRequest rules for the kiosk: Client Hints and the site lock."""
+    return client_hint_rules(identity) + site_lock_rules(settings, target_url)
+
+
+def normalise_sites(values: Iterable[str]) -> List[str]:
+    """Turn domains or URLs into lower-case domains; raise ``ValueError`` naming any that are invalid."""
+    sites, invalid = [], []
+    for value in values:
+        value = value.strip().lower()
+        if not value:
+            continue
+        host = urlsplit(value).hostname if "://" in value else value.split("/", 1)[0]
+        host = (host or "").lstrip("*.").rstrip(".")
+        if _SITE.fullmatch(host):
+            sites.append(host)
+        else:
+            invalid.append(value)
+    if invalid:
+        raise ValueError(f"invalid site{'s' if len(invalid) > 1 else ''} {', '.join(invalid)}; use domains such as youtubekids.com")
+    return list(dict.fromkeys(sites))
 
 
 def normalise_resolution(value: Optional[str]) -> str:
@@ -260,7 +313,9 @@ def page_config(identity: Optional[Identity], settings: PageSettings, target_url
         "deArrow": bool(settings.dearrow),
         "deArrowThumbnails": bool(settings.dearrow and settings.dearrow_thumbnails),
         "returnDislikes": bool(settings.return_dislikes),
-        "headerRules": bool(dnr_rules(identity, settings)),
+        "blockOtherSites": bool(settings.block_other_sites),
+        "allowedSites": allowed_sites(settings, target_url),
+        "headerRules": bool(client_hint_rules(identity)),
         "identity": identity.to_page() if identity else None,
     }
 
@@ -295,4 +350,4 @@ def write_extension_config(
     script = f"globalThis.__STEAMOS_YT_CONFIG__ = Object.freeze({json.dumps(config, indent=2)});\n"
     atomic_write_bytes(extension_dir / "config.js", script.encode("utf-8"))
     atomic_write_json(extension_dir / "config.json", config)
-    atomic_write_json(extension_dir / "rules.json", dnr_rules(identity, settings))
+    atomic_write_json(extension_dir / "rules.json", dnr_rules(identity, settings, target_url))

@@ -12,9 +12,10 @@ YouTube's TV interface on SteamOS, running in [Helium](https://helium.computer) 
 - **Steam integration**: adds a non-Steam shortcut to every Steam account on the device, with a portrait capsule, wide capsule, hero, logo (with position) and icon, and handles Steam being open.
 - **A sign-in per Steam account**: each Steam account gets its own browser profile, so YouTube sign-ins, cookies and watch history follow whoever is signed in to Steam.
 - **Controller support**: a bundled companion extension translates the Steam Deck's controls (or any gamepad) into the key codes YouTube's console apps receive.
-- **SponsorBlock, DeArrow and Return YouTube Dislike**: built into the companion extension for the TV interface and on by default. Sponsored segments are skipped with an on-screen notice and marked on the progress bar, clickbait titles and thumbnails are replaced, and dislike counts return.
+- **SponsorBlock, DeArrow and Return YouTube Dislike**: built into the companion extension for the TV interface and on by default. Sponsored segments are skipped with an on-screen notice and marked on the progress bar, clickbait titles and thumbnails are replaced, and dislike counts return. YouTube's page security policy stays intact.
+- **YouTube only**: pages from other sites never open in the kiosk; pop-ups, new tabs and browser pages close or lead back to YouTube.
 - **Clean exits**: choosing *Exit* inside YouTube, holding **View + Menu**, or *Exit game* from Steam returns you to the library.
-- **Kiosk profiles**: dedicated Helium profiles with no first-run pages, prompts or restore bubbles, VA-API hardware video decoding, autoplay enabled, and Helium's built-in uBlock Origin.
+- **Kiosk profiles**: dedicated Helium profiles with no first-run pages, prompts, restore bubbles or dialogs a controller cannot answer, VA-API hardware video decoding, autoplay enabled, and Helium's built-in uBlock Origin.
 
 ## Requirements
 
@@ -93,7 +94,18 @@ The official browser extensions are written for the desktop site's page layout. 
 
 Lookups run in the extension's background worker and are cached for 30 minutes (failed lookups are retried after two minutes). A slow service never holds up the interface for more than about 1.5 seconds; anything that arrives later shows up the next time that video appears.
 
-YouTube's TV page only allows images from Google's servers, so DeArrow thumbnails require removing that page's Content Security Policy. Set `YT_DEARROW_THUMBNAILS=0` to keep the policy and use DeArrow for titles only.
+YouTube's TV page only allows images from Google's servers, and paints each thumbnail as a CSS background, which that policy governs. Rather than switching the policy off, the extension lays the DeArrow image over YouTube's thumbnail as an `<img>` created from its isolated content-script world: Chromium checks such requests against the extension's policy, not the page's. The image only appears once it has loaded, so a thumbnail DeArrow cannot deliver leaves YouTube's in place, and recycled tiles drop the overlay as soon as they show another video. Set `YT_DEARROW_THUMBNAILS=0` to use DeArrow for titles only.
+
+## YouTube only
+
+The kiosk opens YouTube and nothing else. Allowed are `youtube.com` and its subdomains (including YouTube Music and the consent pages), `youtu.be`, `youtube-nocookie.com`, `youtubekids.com`, Google's sign-in, consent and policy pages, Google's "unusual traffic" check, and the site of `YT_URL`.
+
+- **Other sites** never load: a rule in the companion extension blocks the request before it leaves the device, and the kiosk returns to the YouTube page it came from.
+- **Pop-ups, new tabs and new windows**, including ones opened with keyboard shortcuts such as Ctrl+T, close at once.
+- **Browser pages** (`chrome://` pages such as history, downloads or settings) and local files lead back to YouTube.
+- Only whole pages are restricted. The images, scripts and video YouTube loads from other Google domains are unaffected.
+
+Add sites with `YT_ALLOWED_SITES` (comma-separated domains; subdomains are included), or set `YT_BLOCK_OTHER_SITES=0` to allow everything.
 
 SponsorBlock and DeArrow data comes from the SponsorBlock project under [CC BY-NC-SA 4.0](https://github.com/ajayyy/SponsorBlock/wiki/Database-and-API-License); dislike counts come from the [Return YouTube Dislike](https://returnyoutubedislike.com) API. DeArrow's official extension is a paid product with a free trial. If DeArrow improves your viewing, consider [buying a licence](https://dearrow.ajay.app/payment) to support it.
 
@@ -113,18 +125,32 @@ Settings live in `~/.config/steamos-yt/` and apply the next time YouTube starts.
 | `YT_SPONSORBLOCK` | `1` | Skip SponsorBlock segments |
 | `YT_SPONSORBLOCK_CATEGORIES` | `sponsor,selfpromo,interaction` | Segment types to skip; also `intro`, `outro`, `preview`, `hook`, `filler`, `music_offtopic` |
 | `YT_DEARROW` | `1` | DeArrow titles and thumbnails |
-| `YT_DEARROW_THUMBNAILS` | `1` | `0` keeps YouTube's thumbnails and its page security policy |
+| `YT_DEARROW_THUMBNAILS` | `1` | `0` limits DeArrow to titles |
 | `YT_RETURN_DISLIKES` | `1` | Show dislike counts |
+| `YT_BLOCK_OTHER_SITES` | `1` | Open YouTube and its sign-in pages only (`0` allows any site) |
+| `YT_ALLOWED_SITES` | empty | Further domains the kiosk may open, comma-separated |
 | `YT_PROFILE_PER_STEAM_ACCOUNT` | `1` | Separate sign-in, cookies and history for each Steam account (`0` shares one profile) |
 | `YT_CURSOR_HIDE_SECONDS` | `3` | Cursor auto-hide delay (`0` never hides) |
 | `YT_MAX_RESOLUTION` | `auto` | `screen`, `720p` … `2160p` or `WIDTHxHEIGHT` to raise or cap playback size |
 | `YT_BLOCK_CODECS` | empty | Hide `av1`, `vp9`, `vp8` or `h264` from YouTube, for example to save battery |
 | `YT_OZONE_PLATFORM` | `auto` | `x11` or `wayland` (Game Mode always uses X11 when `auto`) |
-| `YT_KIOSK` | `1` | `0` opens a normal window for troubleshooting |
+| `YT_WINDOW` | `kiosk` | `kiosk` (full screen, no browser controls), `app` (a resizable window without browser controls) or `browser` (a normal window, for troubleshooting) |
 | `YT_LANG` | empty | Interface language such as `en-AU` |
 | `YT_KEEP_STEAM_ENV` | `0` | Keep Steam's `LD_PRELOAD`/`LD_LIBRARY_PATH` for Helium |
 
-`flags.conf` holds extra Helium flags, one per line. `--enable-features`/`--disable-features` lines merge with the built-in ones. If you have edited a file and a newer release ships different defaults, the installer leaves your file alone and writes the new defaults next to it as `*.default`.
+`flags.conf` holds extra Helium flags, one per line. `--enable-features`/`--disable-features` lines merge with the built-in ones. If you have edited a file and a newer release ships different defaults, the installer leaves your file alone and writes the new defaults next to it as `*.default`. The defaults:
+
+| Flag | Why |
+| --- | --- |
+| `--enable-features=AcceleratedVideoDecodeLinuxGL,…` | VA-API hardware video decoding |
+| `--disable-pinch`, `--overscroll-history-navigation=0` | No pinch zoom or swipe-to-go-back from the touch screen or trackpads |
+| `--noerrdialogs` | No crash or error dialogs |
+| `--disable-beforeunload` | A page cannot hold up leaving or closing with a "Leave site?" dialog |
+| `--deny-permission-prompts` | Permission requests are refused instead of showing a prompt a controller cannot reach |
+
+### Kiosk or app mode
+
+Kiosk mode (`YT_WINDOW=kiosk`) is the default and the right fit for Game Mode: the window is full screen, has no tabs, address bar or menus, and cannot be taken out of full screen. App mode (`YT_WINDOW=app`, Chromium's `--app`) also hides the browser controls but opens an ordinary resizable window, which suits Desktop Mode when you want YouTube beside other windows. In Game Mode, Steam shows either one full screen. The site lock, controller support and exits work the same in both.
 
 ## Commands
 
@@ -151,7 +177,7 @@ flowchart LR
   Launcher -->|"kiosk flags, the account's profile, TV user agent"| Helium["Helium"]
   Helium --> Splash["Boot screen"]
   Splash -->|"identity rules live"| TV["youtube.com/tv"]
-  Extension["Companion extension"] -.->|"Client Hints, gamepad → Starboard keys, media checks, exit, SponsorBlock, DeArrow, dislikes"| TV
+  Extension["Companion extension"] -.->|"Client Hints, gamepad → Starboard keys, media checks, exit, site lock, SponsorBlock, DeArrow, dislikes"| TV
 ```
 
 1. **Identity**: YouTube only serves its TV interface to TV and console clients. The launcher passes a user agent in the format of Cobalt, YouTube's TV runtime. The extension rewrites the matching User-Agent Client Hints and `navigator.userAgentData`, so headers and JavaScript agree.
@@ -159,9 +185,10 @@ flowchart LR
 3. **Controller bridge**: the TV interface expects Cobalt to deliver controller input as Starboard key codes (`0x8000` + standard button index, plus virtual codes for stick directions). The extension polls the Gamepad API and emits those codes. It prefers Steam's virtual gamepads, so a controller seen through Steam Input is never counted twice.
 4. **Media capabilities**: Cobalt rejects impossible media parameters (for example `framerate=9999`), and the player probes for this to detect 60 fps and HDR support. The extension reproduces those answers so high-frame-rate formats are offered.
 5. **Exit**: YouTube's *Exit* command, `window.close()` and the View + Menu combo all ask the extension to close the kiosk window, which ends the Steam session cleanly.
-6. **Community services**: the TV interface renders from innertube responses (`/youtubei/v1/browse`, `search` and `next`). The extension holds those responses back briefly to write in DeArrow titles and thumbnails and the dislike count. SponsorBlock follows the `<video>` element on the interface's `#/watch` route and announces skips through YouTube's own notice system.
+6. **Community services**: the TV interface renders from innertube responses (`/youtubei/v1/browse`, `search` and `next`). The extension holds those responses back briefly to write in DeArrow titles and the dislike count, and lays DeArrow thumbnails over the `ytlr-thumbnail-details` elements YouTube paints thumbnails on. SponsorBlock follows the `<video>` element on the interface's `#/watch` route and announces skips through YouTube's own notice system.
 7. **Steam**: shortcuts are written to `userdata/<account>/config/shortcuts.vdf` with the ID Steam itself derives (`crc32(exe + name) | 0x80000000`). Artwork goes to `config/grid/` under the names Steam looks up. A backup of `shortcuts.vdf` is kept as `shortcuts.vdf.steamos-yt.bak`.
 8. **Profiles**: each account's shortcut carries `--steam-account <ID>` in its launch options (anything else you add there is kept). The launcher maps that ID to `profiles/<ID>/` and falls back to the most recent sign-in from Steam's `loginusers.vdf` when started elsewhere.
+9. **Site lock**: a declarativeNetRequest rule blocks top-level pages outside the allowed sites, with an exception for Google's "unusual traffic" check that keeps the TV identity's Client Hints. The extension's background closes every tab but the kiosk's and returns the kiosk tab from blocked pages and browser pages: back to where it was, or to the start page if that repeats within three seconds.
 
 Launches run with Steam's `LD_PRELOAD` and runtime library path removed, as Flatpak apps are, so Helium uses its own sandbox and the system libraries.
 
@@ -184,6 +211,7 @@ Run `steamos-yt doctor` first; it reports versions, paths, the Steam shortcut, t
 - **Black screen or GPU errors**: set `YT_OZONE_PLATFORM=x11`, or try `--disable-gpu` in `flags.conf`, and check `launch.log`.
 - **Stutter or high battery use**: run `vainfo` to see which codecs your GPU decodes. Hide the others with `YT_BLOCK_CODECS`, for example `av1`.
 - **No skips, new titles or dislike counts**: check `YT_SPONSORBLOCK`, `YT_DEARROW` and `YT_RETURN_DISLIKES`, and that the services listed above are reachable from your network.
+- **A page you need does not open**: add its domain to `YT_ALLOWED_SITES`, or set `YT_BLOCK_OTHER_SITES=0`.
 - **A Helium update misbehaves**: `steamos-yt rollback`, then disable the timer with `systemctl --user disable --now steamos-yt-update.timer` until a fixed release arrives.
 
 ## Development
@@ -199,8 +227,9 @@ The smoke test installs into a throwaway home folder. It serves an HTTPS stand-i
 
 - the user agent, Client Hints and `userAgentData`, including on the first navigation;
 - the controller, wheel and media-capability behaviour;
-- SponsorBlock skips and notices, DeArrow titles and thumbnails, and dislike counts, against mocked services. This includes checking that lookups use hash prefixes and that titles-only mode keeps YouTube's security policy;
-- all three exit paths, each of which must close the kiosk;
+- SponsorBlock skips and notices, DeArrow titles and thumbnails, and dislike counts, against mocked services, under a page security policy that blocks third-party images and enforces Trusted Types as YouTube's does. This includes checking that lookups use hash prefixes, that the policy stays in force, that thumbnails follow recycled tiles and that a DeArrow image which fails to load leaves YouTube's in place;
+- all three exit paths, each of which must close the kiosk, one of them in app mode;
+- the site lock: a pop-up closes, a page on another site never reaches the network and the kiosk returns to YouTube;
 - separate profiles per Steam account: the first account inherits the earlier shared profile, a cookie set by one account stays invisible to another, and each account's cookies persist across launches.
 
 | Path | Purpose |
@@ -209,7 +238,7 @@ The smoke test installs into a throwaway home folder. It serves an HTTPS stand-i
 | `src/bin/steamos-yt` | Launcher and management CLI (Bash) |
 | `src/lib/common.sh` | Shared shell helpers: Helium download, signature checks, Steam process control |
 | `src/lib/steamos_yt/` | Python standard-library helpers: binary/text VDF, Steam shortcuts and artwork, profile, identity |
-| `src/extension/` | Manifest V3 companion extension: `page.js` (controller, identity, media, exit), `services.js` and `api.js` (SponsorBlock, DeArrow, Return YouTube Dislike); `config.js`, `config.json` and `rules.json` are generated at launch |
+| `src/extension/` | Manifest V3 companion extension: `page.js` (controller, identity, media, exit), `services.js`, `thumbnails.js` and `api.js` (SponsorBlock, DeArrow, Return YouTube Dislike), `background.js` (boot screen, site lock, service lookups); `config.js`, `config.json` and `rules.json` are generated at launch |
 | `src/share/` | Default settings, desktop entry and systemd units |
 | `assets/src`, `assets/artwork` | SVG sources and rendered Steam artwork |
 | `keys/helium.asc` | Helium's public signing key (fingerprint `BE67 7C19 89D3 5EAB 2C5F 26C9 3516 01AD 01D6 378E`) |

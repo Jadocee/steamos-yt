@@ -145,6 +145,7 @@ def _page_settings(args) -> identity.PageSettings:
         dearrow=_flag(args.dearrow),
         dearrow_thumbnails=_flag(args.dearrow_thumbnails),
         return_dislikes=_flag(args.return_dislikes),
+        block_other_sites=_flag(args.block_other_sites),
     )
     try:
         settings.cursor_hide_seconds = max(0.0, float(args.cursor_hide))
@@ -168,7 +169,20 @@ def _page_settings(args) -> identity.PageSettings:
         known = [item.lower() for item in categories if item.lower() in identity.SPONSORBLOCK_CATEGORIES]
         settings.sponsorblock_categories = list(dict.fromkeys(known))
         _warn(f"{exc}; skipping only {', '.join(settings.sponsorblock_categories) or 'nothing'}")
+    sites = _split(args.allowed_sites)
+    try:
+        settings.allowed_sites = identity.normalise_sites(sites)
+    except ValueError as exc:
+        settings.allowed_sites = identity.normalise_sites(site for site in sites if _valid_site(site))
+        _warn(f"{exc}; ignoring them")
     return settings
+
+
+def _valid_site(value: str) -> bool:
+    try:
+        return bool(identity.normalise_sites([value]))
+    except ValueError:
+        return False
 
 
 def _identity_for(args) -> tuple:
@@ -202,7 +216,7 @@ def cmd_launch_prepare(args) -> int:
     open_url = args.url
     if args.extension:
         identity.write_extension_config(Path(args.extension), ident, settings, args.url)
-        if args.url and identity.dnr_rules(ident, settings):
+        if args.url and identity.client_hint_rules(ident):
             open_url = identity.splash_url(args.url)
     directory = _launch_profile(args)
     if directory is not None:
@@ -297,6 +311,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--dearrow", default="1")
     sub.add_argument("--dearrow-thumbnails", default="1")
     sub.add_argument("--return-dislikes", default="1")
+    sub.add_argument("--block-other-sites", default="1", help="only let YouTube and its sign-in pages open")
+    sub.add_argument("--allowed-sites", default="", help="further domains the kiosk may open")
     sub.set_defaults(func=cmd_launch_prepare)
 
     sub = commands.add_parser("identity", help="print the user agent and Client Hints in use")

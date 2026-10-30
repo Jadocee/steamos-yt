@@ -187,6 +187,7 @@ class ShortcutTests(unittest.TestCase):
         self.assertEqual(entry.get("Exe"), f'"{EXE}"')
         self.assertEqual(entry.get("StartDir"), f'"{Path(EXE).parent}"')
         self.assertEqual(entry.get("AllowDesktopConfig"), 1)
+        self.assertEqual((entry.get("AllowOverlay"), entry.type_of("AllowOverlay")), (0, vdf.INT32))
         self.assertEqual(entry.get("icon"), str(self.config / "grid" / f"{result.appid}_icon.png"))
         self.assertIsInstance(entry.get("tags"), vdf.KeyValues)
         self.assertFalse((steam.config_dir(self.root, OTHER) / "shortcuts.vdf").exists())
@@ -280,6 +281,14 @@ class ShortcutTests(unittest.TestCase):
         [result] = self.add()
         [status] = steam.shortcut_status(self.root, [ACCOUNT, OTHER], EXE)
         self.assertEqual((status.account, status.appid, status.name), (ACCOUNT, result.appid, "YouTube"))
+
+    def test_refresh_turns_the_steam_overlay_off(self):
+        self.add()
+        shortcuts = steam.ShortcutsFile.load(self.config / "shortcuts.vdf")
+        shortcuts.find(EXE)[0].set("AllowOverlay", 1, vdf.INT32)
+        shortcuts.save()
+        self.add()
+        self.assertEqual(self.load_entries().get("0").get("AllowOverlay"), 0)
 
     def test_launch_options_name_each_account_and_keep_user_options(self):
         options = dataclasses.replace(spec(), launch_options=f"--steam-account {steam.ACCOUNT_PLACEHOLDER}")

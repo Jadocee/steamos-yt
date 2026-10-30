@@ -652,6 +652,7 @@ cmd_install() {
     info "Sign-in: $(profile_mode)"
     info "Sites:   $(site_summary)"
     info "Extras:  $(addon_summary)"
+    info "TV:      for its full resolution, open $name ▸ ⚙ ▸ Properties ▸ Game resolution ▸ Native in Game Mode"
     info "Tweaks:  $CONFIG_DIR/steamos-yt.conf and flags.conf"
 }
 

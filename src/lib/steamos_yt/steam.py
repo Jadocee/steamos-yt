@@ -41,6 +41,7 @@ class ShortcutSpec:
     start_dir: str
     launch_options: str = ""
     icon: str = ""
+    overlay: bool = False
 
 
 @dataclass
@@ -259,7 +260,7 @@ def _new_entry(appid: int, spec: ShortcutSpec) -> vdf.KeyValues:
     entry.set("LaunchOptions", spec.launch_options, vdf.STRING)
     entry.set("IsHidden", 0, vdf.INT32)
     entry.set("AllowDesktopConfig", 1, vdf.INT32)
-    entry.set("AllowOverlay", 1, vdf.INT32)
+    entry.set("AllowOverlay", int(spec.overlay), vdf.INT32)
     entry.set("OpenVR", 0, vdf.INT32)
     entry.set("Devkit", 0, vdf.INT32)
     entry.set("DevkitGameID", "", vdf.STRING)
@@ -322,6 +323,7 @@ class ShortcutsFile:
         entry.set("Exe", quote(spec.exe))
         entry.set("StartDir", quote(spec.start_dir))
         entry.set("LaunchOptions", merge_launch_options(str(entry.get("LaunchOptions", "")), spec.launch_options))
+        entry.set("AllowOverlay", int(spec.overlay), vdf.INT32)
         if spec.icon:
             entry.set("icon", spec.icon)
         appid = self.entry_appid(entry)

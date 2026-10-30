@@ -9,7 +9,7 @@ YouTube's TV interface on SteamOS, running in [Helium](https://helium.computer) 
 - **Console UI**: YouTube on TV (the interface used by consoles and smart TVs), not the desktop site.
 - **One-command install**: no root access, no `steamos-readonly` changes; everything lives in your home folder and survives SteamOS updates.
 - **Signed Helium**: downloads the latest official build and checks its PGP signature against Helium's pinned key before use. A weekly user timer keeps it current; the previous version is kept for rollback.
-- **Steam integration**: adds a non-Steam shortcut to every Steam account on the device, with a portrait capsule, wide capsule, hero, logo (with position) and icon, and handles Steam being open.
+- **Steam integration**: adds a non-Steam shortcut to every Steam account on the device, with a portrait capsule, wide capsule, hero, logo (with position) and icon and the Steam overlay off, and handles Steam being open.
 - **A sign-in per Steam account**: each Steam account gets its own browser profile, so YouTube sign-ins, cookies and watch history follow whoever is signed in to Steam.
 - **Controller support**: a bundled companion extension translates the Steam Deck's controls (or any gamepad) into the key codes YouTube's console apps receive.
 - **SponsorBlock, DeArrow and Return YouTube Dislike**: built into the companion extension for the TV interface and on by default. Sponsored segments are skipped with an on-screen notice and marked on the progress bar, clickbait titles and thumbnails are replaced, and dislike counts return. YouTube's page security policy stays intact.
@@ -72,6 +72,14 @@ Sign in through YouTube's own *Sign in* screen: it shows a code to enter at `you
 | Mouse / trackpad | Cursor appears on movement and hides after 3 s; wheel moves the selection; right-click goes back |
 
 In Game Mode, keep a **gamepad** controller layout for the shortcut (Steam's default for non-Steam games). Keyboard-and-mouse layouts such as *Web Browser* stop the controller bridge from seeing the gamepad.
+
+### On a TV: use its full resolution
+
+In Game Mode, Steam decides the resolution each game runs at. On an external display its default is usually lower than the TV's own, so YouTube's interface is upscaled and it offers lower video qualities. With the Steam Deck connected to the TV, select YouTube in your library, then **⚙ → Properties → General → Game resolution → Native**. The setting only appears while an external display is connected; if several Steam accounts use the Deck, check it for each.
+
+The installer cannot set this for you. Steam stores it internally and offers no supported way to change it from outside the Steam client. Once YouTube runs at Native, `YT_MAX_RESOLUTION=auto` lets YouTube offer qualities up to the TV's resolution.
+
+The Steam overlay is switched off for the shortcut (the *Enable the Steam Overlay while in-game* option in its properties). In Game Mode, the Steam button's menu and the Quick Access menu are drawn by Steam itself, not by the overlay.
 
 ## Several Steam accounts
 
@@ -199,7 +207,7 @@ flowchart LR
 4. **Media capabilities**: Cobalt rejects impossible media parameters (for example `framerate=9999`), and the player probes for this to detect 60 fps and HDR support. The extension reproduces those answers so high-frame-rate formats are offered.
 5. **Exit**: YouTube's *Exit* command, `window.close()` and the View + Menu combo all ask the extension to close the kiosk window, which ends the Steam session cleanly.
 6. **Community services**: the TV interface renders from innertube responses (`/youtubei/v1/browse`, `search` and `next`). The extension holds those responses back briefly to write in DeArrow titles and the dislike count, and lays DeArrow thumbnails over the `ytlr-thumbnail-details` elements YouTube paints thumbnails on. SponsorBlock follows the `<video>` element on the interface's `#/watch` route and announces skips through YouTube's own notice system.
-7. **Steam**: shortcuts are written to `userdata/<account>/config/shortcuts.vdf` with the ID Steam itself derives (`crc32(exe + name) | 0x80000000`). Artwork goes to `config/grid/` under the names Steam looks up. A backup of `shortcuts.vdf` is kept as `shortcuts.vdf.steamos-yt.bak`.
+7. **Steam**: shortcuts are written to `userdata/<account>/config/shortcuts.vdf` with the ID Steam itself derives (`crc32(exe + name) | 0x80000000`). The Steam overlay is off for the shortcut (`AllowOverlay` 0). Artwork goes to `config/grid/` under the names Steam looks up. A backup of `shortcuts.vdf` is kept as `shortcuts.vdf.steamos-yt.bak`.
 8. **Profiles**: each account's shortcut carries `--steam-account <ID>` in its launch options (anything else you add there is kept). The launcher maps that ID to `profiles/<ID>/` and falls back to the most recent sign-in from Steam's `loginusers.vdf` when started elsewhere.
 9. **Site lock**: a declarativeNetRequest rule blocks top-level pages outside the allowed sites, with an exception for Google's "unusual traffic" check that keeps the TV identity's Client Hints. The extension's background closes every tab but the kiosk's and returns the kiosk tab from blocked pages and browser pages: back to where it was, or to the start page if that repeats within three seconds.
 10. **Ads**: `ads.js` runs in the page before YouTube's own code and wraps `JSON.parse` and `Response.json()`. Every innertube response passes through it, so ad structures are removed wherever they appear, including continuation pages.

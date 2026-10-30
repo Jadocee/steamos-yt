@@ -211,6 +211,33 @@ class LaunchTests(CliTestCase):
         self.assertFalse((self.home / ".var").exists())
         redirect.assert_called_once_with(self.paths.log("localsend"))
 
+    def test_element_is_scaled_for_a_tv_only_in_game_mode(self):
+        in_game_mode = mock.patch("nonsteamapps.steamclient.in_game_mode", return_value=True)
+        with in_game_mode, mock.patch("nonsteamapps.display.screen_height", return_value=2160):
+            argv, _ = self.launch("element", "--steam-account", str(ALPHA))
+            youtube, _ = self.launch("youtube", "--steam-account", str(ALPHA))
+        self.assertEqual(
+            argv[3:],
+            ["--password-store=basic", "--storage-mode=allow-plaintext", f"--profile=steam-{ALPHA}", "--force-device-scale-factor=3"],
+        )
+        self.assertFalse(any(argument.startswith("--force-device-scale-factor") for argument in youtube))
+        with mock.patch("nonsteamapps.display.screen_height", return_value=2160):
+            argv, _ = self.launch("element", "--steam-account", str(ALPHA))
+        self.assertEqual(argv[-1], f"--profile=steam-{ALPHA}")
+
+    def test_keeping_the_sandbox_hides_game_mode_from_vacuumtube_only(self):
+        os.environ.update({"SteamOS": "1", "SteamGamepadUI": "1"})
+        self.launch("youtube", "--steam-account", str(ALPHA))
+        self.assertEqual(os.environ.get("SteamGamepadUI"), "1")
+        self.paths.settings.parent.mkdir(parents=True, exist_ok=True)
+        self.paths.settings.write_text(f"{cli.GAME_MODE_SANDBOX}=1\n")
+        self.launch("element", "--steam-account", str(ALPHA))
+        self.assertEqual(os.environ.get("SteamGamepadUI"), "1")
+        argv, _ = self.launch("youtube", "--steam-account", str(ALPHA))
+        self.assertNotIn("SteamGamepadUI", os.environ)
+        self.assertEqual(os.environ["SteamOS"], "1")
+        self.assertEqual(argv[3], "--fullscreen")
+
     def test_unknown_or_missing_app(self):
         self.assertEqual(self.run_cli("launch", "kodi"), 1)
         self.assertEqual(self.run_cli("launch", "--steam-account", "1"), 1)
@@ -333,7 +360,7 @@ class HeliumAppTests(CliTestCase):
 
     def test_the_settings_choose_the_scale_and_services(self):
         self.install("helium")
-        config.set_setting(self.paths.settings, cli.HELIUM_SCALE, "1.25")
+        config.set_setting(self.paths.settings, cli.TV_SCALE, "1.25")
         config.set_setting(self.paths.settings, cli.HELIUM_SERVICES, "0")
         argv, _ = self.launch("helium")
         self.assertIn("--force-device-scale-factor=1.25", argv)
@@ -341,10 +368,16 @@ class HeliumAppTests(CliTestCase):
         preferences = json.loads((self.paths.profiles / "helium" / str(ALPHA) / "Default" / "Preferences").read_text())
         self.assertFalse(preferences["helium"]["services"]["enabled"])
 
+    def test_the_old_helium_scale_setting_still_applies(self):
+        self.install("helium")
+        self.paths.settings.write_text(f"{cli.HELIUM_SCALE}=1.75\n")
+        argv, _ = self.launch("helium")
+        self.assertIn("--force-device-scale-factor=1.75", argv)
+
     def test_game_mode_scales_the_pages_for_the_tv(self):
         self.install("hbomax")
         with mock.patch("nonsteamapps.steamclient.in_game_mode", return_value=True), \
-                mock.patch("nonsteamapps.browser.screen_height", return_value=2160):
+                mock.patch("nonsteamapps.display.screen_height", return_value=2160):
             argv, _ = self.launch("hbomax", "--steam-account", str(ALPHA))
         self.assertIn("--force-device-scale-factor=3", argv)
         self.assertIn("--ozone-platform=x11", argv)

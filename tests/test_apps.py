@@ -59,6 +59,13 @@ class ArgumentTests(unittest.TestCase):
             ["element", "localsend", "helium", "primevideo", "hbomax", "netflix", "disneyplus"],
         )
 
+    def test_element_scales_for_a_tv_and_vacuumtube_can_keep_its_sandbox(self):
+        self.assertEqual([app.id for app in apps.APPS if app.tv_scale], ["element"])
+        self.assertEqual(
+            {app.id: app.sandbox_off_when for app in apps.APPS if app.sandbox_off_when},
+            {"youtube": ("SteamGamepadUI",)},
+        )
+
     def test_jellyfin_starts_in_its_tv_layout_with_a_named_profile(self):
         self.assertEqual(apps.by_id("jellyfin").arguments(HOME, 333), ["--tv", "--fullscreen", "--profile=steam-333"])
 
@@ -96,12 +103,16 @@ class ProfileTests(unittest.TestCase):
         youtube.profile.prepare_shared(app_home)
         self.assertTrue(json.loads((app_home / "config/VacuumTube/config.json").read_text())["dearrow"])
 
-    def test_element_folders_start_empty(self):
+    def test_new_element_folders_quit_when_the_window_closes(self):
         element = apps.by_id("element")
         app_home = element.home(self.home)
         element.profile.prepare(app_home, 111, lambda options: 0)
+        settings = app_home / "config/Element-steam-111/electron-config.json"
+        self.assertEqual(json.loads(settings.read_text()), {"minimizeToTray": False})
+        settings.write_text('{"minimizeToTray": true}')
+        element.profile.prepare(app_home, 111, lambda options: 0)
+        self.assertTrue(json.loads(settings.read_text())["minimizeToTray"])
         element.profile.prepare_shared(app_home)
-        self.assertEqual(list((app_home / "config/Element-steam-111").iterdir()), [])
         self.assertFalse((app_home / "config/Element").exists())
 
     def make_jellyfin_profile(self, app_home, name, folder):

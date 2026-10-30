@@ -168,11 +168,13 @@ def _uninstall_flatpaks(flatpak: Flatpak, record: Record, chosen: Sequence[App])
 
 def _summary(paths: Paths, managed: Sequence[App], separate: bool) -> None:
     ui.log("Done")
+    width = max([len("Sign-ins:")] + [len(app.name) + 1 for app in managed]) + 1
     for app in managed:
-        ui.info(f"{app.name + ':':<10}Steam ▸ Library ▸ Non-Steam ▸ {app.name} ({app.client})")
-    ui.info(f"{'Sign-ins:':<10}{'separate for each Steam account' if separate else 'shared by all Steam accounts'}")
-    ui.info(f"{'TV:':<10}for an app's full resolution, open it in Game Mode: {RESOLUTION_HINT}")
-    ui.info(f"{'Settings:':<10}{paths.settings}")
+        client = f" ({app.client})" if app.client != app.name else ""
+        ui.info(f"{app.name + ':':<{width}}Steam ▸ Library ▸ Non-Steam ▸ {app.name}{client}")
+    ui.info(f"{'Sign-ins:':<{width}}{'separate for each Steam account' if separate else 'shared by all Steam accounts'}")
+    ui.info(f"{'TV:':<{width}}for an app's full resolution, open it in Game Mode: {RESOLUTION_HINT}")
+    ui.info(f"{'Settings:':<{width}}{paths.settings}")
 
 
 def cmd_install(args, paths: Paths, flatpak: Flatpak) -> int:

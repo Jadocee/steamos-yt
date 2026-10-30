@@ -92,6 +92,12 @@ class InstallTests(CliTestCase):
             self.assertEqual(link.resolve(), self.paths.launcher.resolve())
         self.assertTrue(self.paths.settings.is_file())
 
+    def test_summary_lines_up_and_names_each_client_once(self):
+        self.install("youtube", "localsend")
+        self.assertIn("    YouTube:   Steam ▸ Library ▸ Non-Steam ▸ YouTube (VacuumTube)\n", self.errors)
+        self.assertIn("    LocalSend: Steam ▸ Library ▸ Non-Steam ▸ LocalSend\n", self.errors)
+        self.assertIn("    Sign-ins:  separate for each Steam account\n", self.errors)
+
     def test_rerunning_without_names_repairs_only_the_apps_in_use(self):
         self.install("youtube")
         self.install()

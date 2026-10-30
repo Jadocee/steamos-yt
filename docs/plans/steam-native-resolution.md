@@ -4,9 +4,9 @@
 
 ## Goal
 
-In Game Mode on an external display, Steam runs a shortcut below the TV's resolution unless the shortcut's **Maximum Game Resolution** is set to **Native**. Today every user has to set it by hand, once per Steam account, under **⚙ → Properties → Shortcut**. The installer should set it for every account on the device, and the uninstaller should put it back.
+In Game Mode on an external display, Steam runs a shortcut below the TV's resolution unless the shortcut's **Maximum Game Resolution** is set to **Native**. Today every user has to set it by hand, for each app and each Steam account, under **⚙ → Properties → Shortcut**. The installer should set it for every app and account on the device, and the uninstaller should put it back.
 
-Once the multi-app work lands ([ADR 0001](../decisions/0001-multi-app-steam-integration.md)), this becomes a per-app setting of the shared Steam integration layer rather than something YouTube-specific.
+It is a per-app setting of the shared Steam integration layer ([ADR 0001](../decisions/0001-multi-app-steam-integration.md)): YouTube and Jellyfin want **Native** on a TV; Element can stay at the default.
 
 ## What is known
 
@@ -17,7 +17,7 @@ Once the multi-app work lands ([ADR 0001](../decisions/0001-multi-app-steam-inte
 | On a device with a built-in screen, a separate **Apply to internal display** toggle (`bOverrideInternalResolution`, set with `SteamClient.Apps.ToggleOverrideResolutionForInternalDisplay`) decides whether the override also applies to that screen. | Same file |
 | Non-Steam shortcuts show the setting on the **Shortcut** page. Steam games show it on **General**. The control is hidden while Steam has no resolutions to offer, for example with no external display connected. | Same file |
 | Steam keeps other per-shortcut client settings in `userdata/<account>/config/localconfig.vdf` under `UserLocalConfigStore → apps → <shortcut app ID>`. Steam ROM Manager writes `UseSteamControllerConfig` there. | Steam ROM Manager, `src/lib/controller-manager.ts` |
-| Steam rewrites its configuration files on exit. Edits only survive if Steam is closed while they are made. | Existing behaviour of `shortcuts.vdf`, handled by `steam_stop`/`steam_restart` in `src/lib/common.sh` |
+| Steam rewrites its configuration files on exit. Edits only survive if Steam is closed while they are made. | Existing behaviour of `shortcuts.vdf`, handled by `steamclient.closed()` in `src/lib/nonsteamapps/steamclient.py` |
 
 Where Steam stores the per-app override is **not** known. The candidates, most likely first:
 
@@ -33,8 +33,8 @@ The device-wide default under **Settings → Display** must not be touched, beca
 1. In Desktop Mode, list the accounts and the shortcut's app ID:
 
    ```bash
-   ~/.local/share/steamos-yt/bin/steamos-yt steam status
-   # Steam account alpha (12345678): present "YouTube" (app ID 3456789012, steam://rungameid/…)
+   ~/.local/share/nonsteamapps/bin/nonsteamapps steam status youtube
+   # Steam account alpha (12345678): present "YouTube" (app ID 3456789012)
    ```
 
 2. Take snapshots for one account (replace `12345678`):
@@ -64,8 +64,8 @@ If nothing changes in any file, the value is probably in Steam Cloud storage or 
 1. **VDF:** `vdf.loads_text` already parses text VDF. Add `dumps_text`, which writes keys in their original order with Steam's quoting and escaping. Test it by round-tripping a real `localconfig.vdf` from a Deck byte for byte.
 2. **Write the key:** add `steam.set_resolution_override(root, account, appid, value)`. It writes to a temporary file in the same folder, parses the result back, keeps one backup and only then replaces the original. It leaves every other key untouched. Mark the entry as ours, as Steam ROM Manager does with `srmAppId`, so that removal never deletes a value the user chose.
 3. **Every account:** reuse `steam.account_ids` and the existing loop over `--user all|auto|ID`. Run only while Steam is closed, inside the same stop and restart window as the shortcut update.
-4. **Setting:** add `YT_GAME_RESOLUTION=native|default|keep` to `steamos-yt.conf`, defaulting to `native`. `keep` never touches the key. Add `YT_GAME_RESOLUTION_INTERNAL=0|1` only if Step 1 shows that the internal-display toggle is stored separately.
-5. **Commands:** add `steamos-yt steam resolution [native|default|WxH] [--user …]`. `doctor` reports each account's current value. `uninstall` removes the key only where it is still marked as ours.
+4. **Setting:** give each `App` in `apps.py` a `resolution` (`native` for YouTube and Jellyfin), and add `GAME_RESOLUTION=auto|keep` to `nonsteamapps.conf`, where `auto` applies each app's value and `keep` never touches the key. Add an internal-display setting only if Step 1 shows that the toggle is stored separately.
+5. **Commands:** add `nonsteamapps steam resolution [native|default|WxH] [APP…] [--user …]`. `doctor` reports each account's current value. `uninstall` removes the key only where it is still marked as ours.
 6. **Tests:** unit tests for the text VDF round trip, escaping, idempotence, several accounts, a missing `apps` section, removal on uninstall, a value the user changed, and refusal while Steam is running. Extend the sandboxed install with fake `userdata` folders, as the existing Steam tests do.
 7. **Docs:** replace the manual instructions in the README with the automatic behaviour and the `keep` option. Remove the `TV:` hint from the install summary.
 
@@ -74,7 +74,7 @@ If nothing changes in any file, the value is probably in Steam Cloud storage or 
 On a Steam Deck docked to a 4K TV, after a fresh install with two Steam accounts:
 
 - [ ] each account shows **Native** under Properties without any manual step;
-- [ ] YouTube's interface renders at the TV's resolution and `YT_MAX_RESOLUTION=auto` offers 2160p;
+- [ ] YouTube and Jellyfin render at the TV's resolution, and YouTube offers 2160p;
 - [ ] the value survives a Steam restart, a reboot, a Steam client update and a sign-in on a second device with cloud sync on;
 - [ ] undocked, the internal display behaves as the toggle says;
 - [ ] uninstalling restores **Default**, and a value the user set by hand is left alone.

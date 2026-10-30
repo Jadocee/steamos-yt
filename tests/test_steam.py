@@ -6,11 +6,11 @@ import unittest
 from pathlib import Path
 
 import _paths  # noqa: F401
-from steamos_yt import steam, vdf
+from nonsteamapps import steam, vdf
 
 ACCOUNT = 22202
 OTHER = 39734273
-EXE = "/home/deck/.local/share/steamos-yt/bin/steamos-yt"
+EXE = "/home/deck/.local/share/nonsteamapps/apps/youtube"
 
 
 def reference_crc32(data: bytes) -> int:
@@ -300,6 +300,21 @@ class ShortcutTests(unittest.TestCase):
         shortcuts.save()
         steam.add_shortcut(self.root, [ACCOUNT], options)
         self.assertEqual(self.load_entries().get("0").get("LaunchOptions"), f"LANG=de %command% --steam-account {ACCOUNT}")
+
+    def test_takes_over_a_legacy_shortcut_and_keeps_its_app_id(self):
+        old = "/home/deck/.local/share/steamos-yt/bin/steamos-yt"
+        [before] = self.add(spec=dataclasses.replace(spec("My Tube"), exe=old, launch_options="--steam-account 1 --x"))
+        moved = dataclasses.replace(spec(), launch_options=f"--steam-account {ACCOUNT}", legacy_exes=(old,))
+        [after] = self.add(spec=moved, rename=False)
+        self.assertFalse(after.created)
+        self.assertEqual((after.appid, after.name), (before.appid, "My Tube"))
+        entry = self.load_entries().get("0")
+        self.assertEqual(len(self.load_entries()), 1)
+        self.assertEqual(entry.get("Exe"), f'"{EXE}"')
+        self.assertEqual(entry.get("LaunchOptions"), f"--steam-account {ACCOUNT} --x")
+        [again] = self.add(spec=moved, rename=False)
+        self.assertEqual(again.appid, before.appid)
+        self.assertEqual(len(self.load_entries()), 1)
 
     def test_corrupt_file_is_reported(self):
         (self.config / "shortcuts.vdf").write_bytes(b"\x00shortcuts\x00\x01broken")

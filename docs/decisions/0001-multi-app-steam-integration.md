@@ -1,6 +1,6 @@
 # ADR 0001: Become a Steam integration installer for several apps
 
-- **Status:** accepted, 30 October 2026
+- **Status:** accepted, 30 October 2026; amended the same day with the owner's answers (see [Amendment](#amendment-30-october-2026)), which supersede the points they name
 - **Covers:** how apps are delivered, the shared Steam integration layer and YouTube's engine
 - **Related:** [Maximum Game Resolution plan](../plans/steam-native-resolution.md)
 
@@ -118,6 +118,8 @@ Steam runs the core's launcher, never the app directly: `<launcher> launch <reci
 
 ## Migration
 
+Superseded by the amendment: phases 1–3, 5 and 6 shipped together as NonSteamApps 2.0.0, and phase 4 remains.
+
 | Phase | Work | Done when |
 | --- | --- | --- |
 | 1. Core | Recipe loader; today's YouTube moves into a `youtube-helium` recipe; `install`, `remove` and `list` per app | No visible change; every existing test and the smoke test pass |
@@ -127,13 +129,26 @@ Steam runs the core's launcher, never the app directly: `<launcher> launch <reci
 | 5. Switch | `youtube` becomes the default; existing installs keep the same shortcut and sign in again | No regression from the checklist; users told in the README and install summary |
 | 6. Clean-up | Remove the YouTube-specific Helium code one minor release later; decide the project's name | Only the `webapp` engine remains in Helium |
 
-## Open questions
+## Amendment (30 October 2026)
 
-1. Keep the name `steamos-yt`, or rename the project and command once it serves several apps? Renaming must keep YouTube's old executable path as a shim (see decision 6).
-2. Should `youtube-helium` stay permanently for its stronger sandbox and site lock?
-3. Is `basic_text` secret storage acceptable for Steam-launched Element profiles? Game Mode may offer no keyring, and the same profile must open in both modes.
-4. Which apps come after these three?
-5. Should artwork stay original and shipped with each recipe, as today, or be fetched from SteamGridDB with the user's own API key?
+The owner answered the open questions. Where these answers differ from the text above, they take precedence.
+
+1. **Name.** The project is **NonSteamApps**: the command is `nonsteamapps`, and it installs into `~/.local/share/nonsteamapps`. The GitHub repository keeps its address until it is renamed. No shim stays at SteamOS YT's old path. Instead, the installer takes over the old YouTube shortcut in place and keeps its app ID, which meets the aim of decision 6 without leaving old files behind.
+2. **YouTube.** VacuumTube replaces the Helium engine straight away, with no `youtube-helium` overlap. Helium, the companion extension and the `webapp` and `archive` backends are removed. A `webapp` backend can return, from history, if a web-only app ever needs it. This supersedes decision 5 and the backends listed in decision 2.
+3. **Apps.** Element and Jellyfin come next after VacuumTube. All three ship together.
+4. **Element's sign-in (decided here).** Steam starts Element with `--password-store=basic --storage-mode=allow-plaintext`. With this:
+   - its secrets use Electron's `basic_text` store, which encrypts with a fixed key;
+   - the same profile opens in Game Mode, which has no keyring, and in Desktop Mode;
+   - no consent prompt appears that a controller cannot answer.
+
+   The cost is protection against other software running as the user. The README recommends Secure Backup and signing out lost devices. VacuumTube needs no such flag, because it keeps cookies unencrypted. Jellyfin Desktop needs none either, because its source uses no keyring at all.
+5. **Artwork.** Each app ships original artwork, drawn in one family: a TV-screen emblem with an app-specific glyph and colour.
+6. **Recipes.** The recipes are entries in `apps.py` rather than TOML files. This keeps the Python 3.8 baseline and needs no parser. Each entry includes the app's per-account data handling:
+   - VacuumTube: `--portable` with a folder per account, created with SponsorBlock, DeArrow and dislike counts turned on, as SteamOS YT had them;
+   - Element: `--profile`;
+   - Jellyfin: a named profile, created before `--profile` selects it.
+
+Still open: Steam Input layouts for each app, and Maximum Game Resolution (migration phase 4).
 
 ## Sources
 

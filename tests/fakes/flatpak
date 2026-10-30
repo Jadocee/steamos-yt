@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""Stand-in for the flatpak command: records every call and keeps installed apps in a JSON file.
+
+FAKE_FLATPAK_STATE  JSON file of installed apps ({"apps": {id: {"version", "installation"}}})
+FAKE_FLATPAK_LOG    file that receives one JSON array of arguments per call
+FAKE_FLATPAK_FAIL   a subcommand (for example "install") that should fail
+"""
+
+import json
+import os
+import sys
+import uuid
+from pathlib import Path
+
+
+def main(argv):
+    with open(os.environ["FAKE_FLATPAK_LOG"], "a", encoding="utf-8") as log:
+        log.write(json.dumps(argv) + "\n")
+    state_file = Path(os.environ["FAKE_FLATPAK_STATE"])
+    state = json.loads(state_file.read_text()) if state_file.exists() else {"apps": {}}
+    command = argv[0] if argv else ""
+    if command == os.environ.get("FAKE_FLATPAK_FAIL"):
+        print(f"error: {command} failed", file=sys.stderr)
+        return 1
+    if command == "list":
+        for app_id, info in state["apps"].items():
+            print(f"{app_id}\t{info['version']}\t{info['installation']}")
+    elif command == "install":
+        state["apps"][argv[-1]] = {"version": "1.0.0", "installation": "user"}
+    elif command == "uninstall" and "--unused" not in argv:
+        if state["apps"].pop(argv[-1], None) is None:
+            print(f"error: {argv[-1]} not installed", file=sys.stderr)
+            return 1
+    elif command == "run" and "--create-profile" in argv:
+        name = argv[argv.index("--create-profile") + 1]
+        folder = Path.home() / ".var/app" / argv[1] / "data/jellyfin-desktop/profiles" / uuid.uuid4().hex
+        folder.mkdir(parents=True)
+        (folder / "profile.json").write_text(json.dumps({"name": name}))
+    state_file.write_text(json.dumps(state))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

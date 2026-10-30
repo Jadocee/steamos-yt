@@ -1,0 +1,9 @@
+[Unit]
+Description=Update the apps NonSteamApps installed
+Documentation=https://github.com/jadocee/steamos-yt
+
+[Service]
+Type=oneshot
+ExecStart="@LAUNCHER@" update --quiet
+Nice=10
+IOSchedulingClass=idle

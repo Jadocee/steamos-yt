@@ -1,253 +1,258 @@
-# SteamOS YT
+# NonSteamApps
 
-YouTube's TV interface on SteamOS, running in [Helium](https://helium.computer) as a full-screen kiosk and launched from the Steam library like any other game, with its own artwork and controller support.
+Living-room apps for SteamOS, added to the Steam library with original artwork. They come from Flathub, or run in NonSteamApps' own copy of the Helium browser, set up for a TV and a controller. Each Steam account gets its own sign-ins. The apps work in Game Mode and Desktop Mode, and NonSteamApps keeps them up to date.
 
-![Steam library page](assets/artwork/wide.png)
+| In Steam | App | Source | Good to know |
+| --- | --- | --- | --- |
+| **YouTube** | [VacuumTube](https://github.com/shy1132/VacuumTube) | `rocks.shy.VacuumTube` | YouTube's TV interface, with controller support, ad blocking and casting from the YouTube phone app. NonSteamApps turns on SponsorBlock, DeArrow and dislike counts. |
+| **Element** | [Element Desktop](https://element.io) | `im.riot.Riot` | Matrix chat. A desktop interface: use the touchscreen, the trackpads or a keyboard. |
+| **Jellyfin** | [Jellyfin Desktop](https://github.com/jellyfin/jellyfin-desktop) | `org.jellyfin.JellyfinDesktop` | Your Jellyfin server in its TV layout, with controller support. It plays more formats without the server converting them. |
+| **LocalSend** | [LocalSend](https://localsend.org) | `org.localsend.localsend_app` | Send files to and from nearby phones and computers over your own network, with no account and no internet needed. Received files go to `~/Downloads`. |
+| **Helium** | [Helium](https://helium.computer) | Signed Helium release | A private web browser with uBlock Origin built in, set up for a TV and a controller. |
+| **Prime Video** | Prime Video in Helium | Helium, full screen | Amazon's streaming service, full screen with no browser interface. |
+| **HBO Max** | HBO Max in Helium | Helium, full screen | Warner Bros. Discovery's streaming service, full screen with no browser interface. |
+| **Netflix** | Netflix in Helium | Helium, full screen | Netflix's streaming service, full screen with no browser interface. |
+| **Disney+** | Disney+ in Helium | Helium, full screen | Disney's streaming service, full screen with no browser interface. |
 
 ## Features
 
-- **Console UI**: YouTube on TV (the interface used by consoles and smart TVs), not the desktop site.
-- **One-command install**: no root access, no `steamos-readonly` changes; everything lives in your home folder and survives SteamOS updates.
-- **Signed Helium**: downloads the latest official build and checks its PGP signature against Helium's pinned key before use. A weekly user timer keeps it current; the previous version is kept for rollback.
-- **Steam integration**: adds a non-Steam shortcut to every Steam account on the device, with a portrait capsule, wide capsule, hero, logo (with position) and icon, and handles Steam being open.
-- **A sign-in per Steam account**: each Steam account gets its own browser profile, so YouTube sign-ins, cookies and watch history follow whoever is signed in to Steam.
-- **Controller support**: a bundled companion extension translates the Steam Deck's controls (or any gamepad) into the key codes YouTube's console apps receive.
-- **SponsorBlock, DeArrow and Return YouTube Dislike**: built into the companion extension for the TV interface and on by default. Sponsored segments are skipped with an on-screen notice and marked on the progress bar, clickbait titles and thumbnails are replaced, and dislike counts return. YouTube's page security policy stays intact.
-- **YouTube only**: pages from other sites never open in the kiosk; pop-ups, new tabs and browser pages close or lead back to YouTube.
-- **Clean exits**: choosing *Exit* inside YouTube, holding **View + Menu**, or *Exit game* from Steam returns you to the library.
-- **Kiosk profiles**: dedicated Helium profiles with no first-run pages, prompts, restore bubbles or dialogs a controller cannot answer, VA-API hardware video decoding, autoplay enabled, and Helium's built-in uBlock Origin.
+- **No root, nothing lost on updates.** Apps install into your user Flatpak installation, which SteamOS updates leave alone. An app you already installed, for example through Discover, is used as it is and never uninstalled.
+- **Every Steam account.** Each account on the device gets a shortcut, with artwork for the library, the capsule, the hero banner, the logo and the icon. The Steam overlay is off.
+- **Separate sign-ins.** Each Steam account has its own data in every app except LocalSend, which has no sign-in, so its settings are shared (see [Several Steam accounts](#several-steam-accounts)).
+- **Console-ready browser apps.** Helium and the streaming apps open without first-run pages, prompts or a "Restore pages?" bubble after Steam closes them. The arrow keys move between links and buttons, the interface is dark, and in Game Mode pages are scaled for the TV (see [Helium apps](#helium-apps)).
+- **Private by default.** Helium blocks ads and trackers with its built-in uBlock Origin. NonSteamApps' Helium profiles also send Global Privacy Control and keep no crash reports (see [Privacy, security and ad blocking](#privacy-security-and-ad-blocking)).
+- **Controller layouts.** The Helium apps, Element and LocalSend get Steam's Web Browser controller layout, unless you have picked another.
+- **Updates.** A weekly timer updates the apps NonSteamApps installed, Helium included.
+- **Replaces SteamOS YT.** On a device with this project's earlier YouTube kiosk, its YouTube shortcut moves to VacuumTube and keeps its place in the library (see [Moving from SteamOS YT](#moving-from-steamos-yt)).
 
 ## Requirements
 
-- SteamOS 3 (Steam Deck or other hardware) or Arch Linux with the native `steam` package
-- x86_64 or aarch64
-- `curl`, `tar`, `xz`, `python3` (3.8+) and `gpg`, all included with SteamOS
-- Sign in to Steam at least once before installing, with every account that should get the shortcut, so their libraries exist
+- SteamOS 3, or another Linux system with Steam and Flatpak
+- Python 3.8 or newer, `flatpak`, `tar` and `xz`, `gpg` to check Helium's signature, and `curl` to download the installer; all are included with SteamOS
+- An internet connection. The first install of each app also downloads its Flatpak runtime or Helium, which takes a while.
 
 ## Install
 
-On SteamOS, switch to **Desktop Mode**, open **Konsole**, and run:
-
-```bash
-git clone https://github.com/jadocee/steamos-yt.git
-cd steamos-yt
-./install.sh
-```
-
-If the repository is public, this one-liner downloads and runs the installer instead:
+In Desktop Mode, open Konsole and run:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jadocee/steamos-yt/main/install.sh | bash
 ```
 
-The installer closes Steam (after asking) to add the shortcut, then starts it again. Switch back to Game Mode and look under **Library → Non-Steam**.
+This installs all nine apps. To choose, name them:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jadocee/steamos-yt/main/install.sh | bash -s -- youtube jellyfin
+```
+
+From a clone, run `./install.sh [APP...]`. Run it again at any time to update NonSteamApps or repair the apps you use; without names, it handles the apps already installed. Steam must be closed while its library is changed, so the installer offers to close Steam and starts it again afterwards. It cannot do that from Game Mode.
 
 | Option | Effect |
 | --- | --- |
-| `--name NAME` | Library title (default `YouTube`) |
-| `--steam-user ID` | `all` (every account that has signed in on this device, default), `auto` (the most recent one), or an account ID or SteamID64 |
-| `--helium-version VER` | Install a specific Helium release |
-| `--helium-archive FILE` | Install from a local `helium-*_linux.tar.xz` (its `.asc` must sit beside it) |
-| `--no-steam` / `--no-desktop-entry` / `--no-auto-update` | Skip the shortcut, menu entry or update timer |
-| `--no-helium-services` | Do not opt in to Helium's privacy-proxied services (filter-list and extension updates) |
+| `--steam-user all\|auto\|ID` | Steam accounts that get shortcuts: all (default), the most recent sign-in, or one account |
+| `--no-steam` | Leave the Steam library alone |
 | `--no-restart-steam` | Leave Steam closed afterwards |
-| `-y`, `--yes` | Do not ask before closing Steam |
-| `--skip-verify` | Accept an unsigned Helium build (not recommended) |
+| `--no-auto-update` | Do not install the weekly update timer |
+| `--helium-archive FILE` | Install Helium from a downloaded release archive, with its `.asc` signature beside it |
+| `--skip-verify` | Install Helium without checking its signature (not recommended) |
+| `-y`, `--yes` / `-q`, `--quiet` | Answer yes to questions / print only warnings and errors |
 
-Re-running the installer is safe. It updates the app in place, keeps your settings and sign-ins, and refreshes the Steam shortcuts without duplicating them.
+## Using the apps
 
-## Using it
+Open them from **Library → Non-Steam** in Game Mode or in the Steam client in Desktop Mode. To quit, use the app's own exit, or press the Steam button and choose **Exit game**.
 
-Sign in through YouTube's own *Sign in* screen: it shows a code to enter at `youtube.com/activate` on your phone.
+- **YouTube:** controllers work out of the box. Press `Ctrl+O`, or open YouTube's settings, for VacuumTube's settings: ad blocking, SponsorBlock categories, DeArrow, dislikes, hiding Shorts, codec filters and more. To cast from a phone, choose the device in the YouTube app on the same network.
+- **Element:** Element has no controller navigation, so it gets Steam's Web Browser controller layout, in which the trackpads work as a mouse. Use those or the touchscreen; **Steam + X** opens the on-screen keyboard. To pick another layout, use the controller icon on its library page.
+- **Jellyfin:** starts in its TV layout. Add your server and sign in once for each Steam account.
+- **LocalSend:** devices on the same network find each other while LocalSend is open on both.
+  - **Receiving:** accept a transfer and the files land in `~/Downloads`.
+  - **Sending:** you pick files through the system file chooser. If it does not open in Game Mode, send from Desktop Mode.
+  - **Controls:** use the touchscreen, or the trackpads in Steam's Web Browser layout.
+- **Helium, Prime Video, HBO Max, Netflix and Disney+:** see [Helium apps](#helium-apps).
 
-| Input | Action |
-| --- | --- |
-| D-pad / left stick | Move (held directions repeat) |
-| **A** | Select |
-| **B** | Back |
-| Other buttons | Passed through exactly as a console reports them |
-| Hold **View + Menu** for 1.5 s | Close YouTube |
-| Keyboard | Arrow keys, Enter, Esc |
-| Mouse / trackpad | Cursor appears on movement and hides after 3 s; wheel moves the selection; right-click goes back |
+### On a TV: use its full resolution
 
-In Game Mode, keep a **gamepad** controller layout for the shortcut (Steam's default for non-Steam games). Keyboard-and-mouse layouts such as *Web Browser* stop the controller bridge from seeing the gamepad.
+In Game Mode, Steam decides the resolution each app runs at. On an external display, its default is usually lower than the TV's own. With the Steam Deck connected to the TV, select an app in your library, then **⚙ → Properties → Shortcut → Maximum Game Resolution → Native**. The setting only appears while an external display is connected. Set it for each app, and for each Steam account. [docs/plans/steam-native-resolution.md](docs/plans/steam-native-resolution.md) describes how automating this is planned.
 
 ## Several Steam accounts
 
-The installer adds YouTube to every Steam account that has signed in on the device. Each account also gets its own Helium profile, holding its YouTube and Google sign-in, cookies, watch history and settings. When someone else signs in to Steam, they see their own YouTube, not yours.
+Each Steam account's shortcut starts the app with `--steam-account <ID>`. NonSteamApps then points the app at that account's own data:
 
-- **How the account is known**: each account's shortcut starts the launcher with `--steam-account <ID>`, which selects `~/.local/share/steamos-yt/profiles/<ID>/`. Launches from outside Steam (the Desktop Mode menu or a terminal) use the most recently signed-in Steam account; pick another with `steamos-yt launch --steam-account <ID>`. `steamos-yt doctor` lists the accounts and their profiles.
-- **Accounts that sign in later**: Steam creates an account's library folder at its first sign-in, after the installer has run. Run `steamos-yt steam add` from Desktop Mode once that account has signed in.
-- **Upgrading from 1.1 or earlier**: the installer moves the previous shared profile, with its sign-in, to the most recently signed-in Steam account (if YouTube is open at the time, to the first account that starts it afterwards). The other accounts start signed out.
-- **One profile for everyone**: set `YT_PROFILE_PER_STEAM_ACCOUNT=0` to have every account share `profile/` instead.
-- **Several people on one Steam account**: YouTube on TV can hold several Google accounts and switch between them from its own account menu, with no Steam changes.
+| App | Data for a Steam account |
+| --- | --- |
+| YouTube | `~/.var/app/rocks.shy.VacuumTube/config/VacuumTube-steam-<ID>` |
+| Element | `~/.var/app/im.riot.Riot/config/Element-steam-<ID>` |
+| Jellyfin | A Jellyfin Desktop profile named `steam-<ID>`, created on first launch |
+| LocalSend | Shared by every account: it has no sign-in, and received files go to `~/Downloads` |
+| Helium, Prime Video, HBO Max, Netflix, Disney+ | A Helium profile in `~/.local/share/nonsteamapps/profiles/<app>/<ID>` |
 
-## SponsorBlock, DeArrow and Return YouTube Dislike
+Started from the applications menu, VacuumTube and Element use their usual data instead, and Jellyfin uses its default profile. To give every account the same data, set `PROFILE_PER_STEAM_ACCOUNT=0` in `~/.config/nonsteamapps/nonsteamapps.conf`.
 
-The official browser extensions are written for the desktop site's page layout. On the TV interface, DeArrow and Return YouTube Dislike find nothing to change, and SponsorBlock can only skip silently. SteamOS YT therefore builds all three into its companion extension, using the same public services:
+## Helium apps
 
-| Service | On the TV interface | Lookups |
-| --- | --- | --- |
-| [SponsorBlock](https://sponsor.ajay.app) | Skips the categories in `YT_SPONSORBLOCK_CATEGORIES` (sponsors, self-promotion and interaction reminders by default) when playback reaches them, shows a notice, and marks segments on the progress bar. Seeking into the middle of a segment does not skip it. | `sponsor.ajay.app`, by the first four characters of the video ID's SHA-256 hash |
-| [DeArrow](https://dearrow.ajay.app) | Replaces tile titles and thumbnails (home, subscriptions, search and suggestions) with the top community submission. Videos without a well-voted submission keep YouTube's version. | `sponsor.ajay.app` by hash prefix; thumbnails from `dearrow-thumb.ajay.app` |
-| [Return YouTube Dislike](https://returnyoutubedislike.com) | Shows the dislike count on the like/dislike button and in the video description. | `returnyoutubedislikeapi.com`, by video ID, once per video opened |
+Helium publishes no Flatpak, so NonSteamApps installs its signed release itself. It checks the signature against Helium's public key, keeps the installed version and the one before it in `~/.local/share/nonsteamapps/helium`, and updates it with the other apps. The apps run as follows:
 
-Lookups run in the extension's background worker and are cached for 30 minutes (failed lookups are retried after two minutes). A slow service never holds up the interface for more than about 1.5 seconds; anything that arrives later shows up the next time that video appears.
+- **Helium** opens as a full browser, maximised.
+- **Prime Video**, **HBO Max**, **Netflix** and **Disney+** each open their site full screen (kiosk mode), with no address bar or tabs. To leave, press the Steam button and choose **Exit game**.
 
-YouTube's TV page only allows images from Google's servers, and paints each thumbnail as a CSS background, which that policy governs. Rather than switching the policy off, the extension lays the DeArrow image over YouTube's thumbnail as an `<img>` created from its isolated content-script world: Chromium checks such requests against the extension's policy, not the page's. The image only appears once it has loaded, so a thumbnail DeArrow cannot deliver leaves YouTube's in place, and recycled tiles drop the overlay as soon as they show another video. Set `YT_DEARROW_THUMBNAILS=0` to use DeArrow for titles only.
+Each app has its own Helium profile for each Steam account, so signing in to one never signs you in to another. Before every start, NonSteamApps sets up that profile for a console:
 
-SponsorBlock and DeArrow data comes from the SponsorBlock project under [CC BY-NC-SA 4.0](https://github.com/ajayyy/SponsorBlock/wiki/Database-and-API-License); dislike counts come from the [Return YouTube Dislike](https://returnyoutubedislike.com) API. DeArrow's official extension is a paid product with a free trial. If DeArrow improves your viewing, consider [buying a licence](https://dearrow.ajay.app/payment) to support it.
+- **No interruptions:** onboarding and welcome pages are marked as seen, and the last session is recorded as closed cleanly. Steam ends apps by signalling them, which would otherwise bring up "Restore pages?".
+- **Fewer prompts:** sites cannot ask to send notifications. The streaming apps also turn off translation, password and address saving, and permission prompts.
+- **Navigation:** the arrow keys move between links and buttons, as on a TV (Chromium's spatial navigation).
+- **Dark:** Helium's interface is dark, and so are sites that offer a dark theme. In the Helium app, **Settings → Appearance → Mode** switches back to light.
+- **Scale:** in Game Mode, pages are scaled so a TV shows a 720p-sized layout (1.5× at 1080p, 3× at 4K). Set `HELIUM_SCALE` to choose a fixed scale.
+- **Video:** decoding uses the graphics chip (VA-API), and video plays without waiting for a click.
+- **Controllers:** the apps get Steam's Web Browser controller layout. The trackpads work as a mouse and scroll wheel, and **Steam + X** opens the on-screen keyboard. Change it under the controller icon on the app's library page.
 
-## YouTube only
+### Streaming apps: what to expect
 
-The kiosk opens YouTube and nothing else. Allowed are `youtube.com` and its subdomains (including YouTube Music and the consent pages), `youtu.be`, `youtube-nocookie.com`, `youtubekids.com`, Google's sign-in, consent and policy pages, Google's "unusual traffic" check, and the site of `YT_URL`.
+- **Widevine:** all four services need Widevine copy protection. Helium downloads it through Helium's services the first time a profile asks for it, and every profile then shares that download. If the first video does not play, close the app and open it again.
+- **Picture quality:** on Linux, Widevine runs without hardware protection (level L3), and the services limit browsers like this: Prime Video to standard definition, Netflix to 720p. Disney+ plays, but may limit quality too. HBO Max does not officially support Linux, so it may limit quality, or stop playing altogether. NonSteamApps cannot lift these limits.
+- **Helium's services:** they are on by default, because they deliver Widevine and keep the ad blocker's filter lists current. Set `HELIUM_SERVICES=0` to keep Helium from contacting them; the streaming apps then cannot play.
 
-- **Other sites** never load: a rule in the companion extension blocks the request before it leaves the device, and the kiosk returns to the YouTube page it came from.
-- **Pop-ups, new tabs and new windows**, including ones opened with keyboard shortcuts such as Ctrl+T, close at once.
-- **Browser pages** (`chrome://` pages such as history, downloads or settings) and local files lead back to YouTube.
-- Only whole pages are restricted. The images, scripts and video YouTube loads from other Google domains are unaffected.
+### Privacy, security and ad blocking
 
-Add sites with `YT_ALLOWED_SITES` (comma-separated domains; subdomains are included), or set `YT_BLOCK_OTHER_SITES=0` to allow everything.
+Helium does most of the work, and NonSteamApps keeps its defaults:
+
+- **Ads and trackers:** uBlock Origin is built in. Helium's services keep its filter lists current.
+- **Tracking:** third-party cookies are blocked, and WebRTC does not reveal local network addresses. Fingerprinting scripts get slightly randomised answers. Link-auditing pings, page preloading and running in the background are off.
+- **Connections:** Helium tries HTTPS first, and warns before it opens a public site over an insecure connection.
+- **Updates:** NonSteamApps installs Helium only with a valid signature from Helium's key, updates it every week, and keeps the version before for `nonsteamapps rollback`.
+
+Each new profile also:
+
+- sends [Global Privacy Control](https://globalprivacycontrol.org), which asks sites not to sell or share your data; some laws, such as California's, require sites to honour it;
+- keeps crash reports off, so no upload question appears after a crash.
+
+NonSteamApps sets these only when it creates a profile, so a change you make in Helium's settings stays.
+
+Left out on purpose:
+
+| Not added | Why |
+| --- | --- |
+| Extra extensions, such as ones claiming 1080p on Netflix | Each is more code from another source with access to your sign-ins, to vet and keep updated. The 1080p ones also rely on tricks that the services break without notice. |
+| Strict HTTPS-only mode | Helium already prefers HTTPS. Strict mode adds full-page warnings that are awkward to get past with a controller. |
+| A fixed secure-DNS provider | Helium already uses DNS over HTTPS when your network's DNS provider supports it. A fixed provider would see every site you visit, and can break home networks that name local devices or filter content. |
+| JavaScript without its optimiser | It removes a common route for exploits, but makes the streaming sites' heavy interfaces noticeably slower. |
+| Locking the streaming apps to their own sites | Sign-in, payment and playback span many domains that change without notice, so a lock would break them. |
+| Changing uBlock Origin's filter lists | Doing it for you would need a system-wide browser policy, which needs root. You can add lists, such as cookie-notice filters, in uBlock Origin's own settings in the Helium app. |
+
+**Ads in ad-supported plans.** uBlock Origin removes ads and trackers from web pages. The ads in the streaming services' ad-supported plans, however, come from the services themselves, alongside the video, so a blocker either cannot remove them or breaks playback; only an ad-free plan does.
+
+## How Element keeps your sign-in
+
+Element normally protects its stored session secrets with the system keyring. Game Mode has no keyring, and a profile protected by KWallet in Desktop Mode cannot be opened in Game Mode. Steam therefore starts Element with `--password-store=basic --storage-mode=allow-plaintext`.
+
+The session secrets stay in the profile folder, encrypted with a fixed key rather than a password: hidden from casual view, but not protected from software running as your user. In exchange, the same profile works in both modes and Element never stops at a prompt a controller cannot answer.
+
+To limit the risk:
+
+- set up Element's **Secure Backup** with a recovery key;
+- if the device is lost, sign it out from another device under **Settings → Sessions**.
+
+Element started from the applications menu keeps using the keyring.
 
 ## Configuration
 
-Settings live in `~/.config/steamos-yt/` and apply the next time YouTube starts.
+`~/.config/nonsteamapps/nonsteamapps.conf` holds three settings:
 
-`steamos-yt.conf` (`KEY=value`):
-
-| Setting | Default | Purpose |
+| Setting | Default | Effect |
 | --- | --- | --- |
-| `YT_URL` | `https://www.youtube.com/tv` | Page opened in the kiosk |
-| `YT_IDENTITY` | `cobalt` | Present as a Cobalt TV device (`browser` keeps Helium's identity) |
-| `YT_USER_AGENT` | empty | Custom user agent; disables Client Hint rewriting |
-| `YT_CONTROLLER` | `1` | Controller bridge on or off |
-| `YT_EXIT_COMBO` | `1` | Hold View + Menu to exit |
-| `YT_SPONSORBLOCK` | `1` | Skip SponsorBlock segments |
-| `YT_SPONSORBLOCK_CATEGORIES` | `sponsor,selfpromo,interaction` | Segment types to skip; also `intro`, `outro`, `preview`, `hook`, `filler`, `music_offtopic` |
-| `YT_DEARROW` | `1` | DeArrow titles and thumbnails |
-| `YT_DEARROW_THUMBNAILS` | `1` | `0` limits DeArrow to titles |
-| `YT_RETURN_DISLIKES` | `1` | Show dislike counts |
-| `YT_BLOCK_OTHER_SITES` | `1` | Open YouTube and its sign-in pages only (`0` allows any site) |
-| `YT_ALLOWED_SITES` | empty | Further domains the kiosk may open, comma-separated |
-| `YT_PROFILE_PER_STEAM_ACCOUNT` | `1` | Separate sign-in, cookies and history for each Steam account (`0` shares one profile) |
-| `YT_CURSOR_HIDE_SECONDS` | `3` | Cursor auto-hide delay (`0` never hides) |
-| `YT_MAX_RESOLUTION` | `auto` | `screen`, `720p` … `2160p` or `WIDTHxHEIGHT` to raise or cap playback size |
-| `YT_BLOCK_CODECS` | empty | Hide `av1`, `vp9`, `vp8` or `h264` from YouTube, for example to save battery |
-| `YT_OZONE_PLATFORM` | `auto` | `x11` or `wayland` (Game Mode always uses X11 when `auto`) |
-| `YT_WINDOW` | `kiosk` | `kiosk` (full screen, no browser controls), `app` (a resizable window without browser controls) or `browser` (a normal window, for troubleshooting) |
-| `YT_LANG` | empty | Interface language such as `en-AU` |
-| `YT_KEEP_STEAM_ENV` | `0` | Keep Steam's `LD_PRELOAD`/`LD_LIBRARY_PATH` for Helium |
+| `PROFILE_PER_STEAM_ACCOUNT` | `1` | Separate data for each Steam account (see [Several Steam accounts](#several-steam-accounts)) |
+| `HELIUM_SERVICES` | `1` | Let Helium use its services, which deliver Widevine for the streaming apps and keep the ad blocker's filter lists current |
+| `HELIUM_SCALE` | `auto` | Scale of the Helium apps: `auto` sizes pages for a TV in Game Mode, or a number such as `1.5` |
 
-`flags.conf` holds extra Helium flags, one per line. `--enable-features`/`--disable-features` lines merge with the built-in ones. If you have edited a file and a newer release ships different defaults, the installer leaves your file alone and writes the new defaults next to it as `*.default`. The defaults:
-
-| Flag | Why |
-| --- | --- |
-| `--enable-features=AcceleratedVideoDecodeLinuxGL,…` | VA-API hardware video decoding |
-| `--disable-pinch`, `--overscroll-history-navigation=0` | No pinch zoom or swipe-to-go-back from the touch screen or trackpads |
-| `--noerrdialogs` | No crash or error dialogs |
-| `--disable-beforeunload` | A page cannot hold up leaving or closing with a "Leave site?" dialog |
-| `--deny-permission-prompts` | Permission requests are refused instead of showing a prompt a controller cannot reach |
-
-### Kiosk or app mode
-
-Kiosk mode (`YT_WINDOW=kiosk`) is the default and the right fit for Game Mode: the window is full screen, has no tabs, address bar or menus, and cannot be taken out of full screen. App mode (`YT_WINDOW=app`, Chromium's `--app`) also hides the browser controls but opens an ordinary resizable window, which suits Desktop Mode when you want YouTube beside other windows. In Game Mode, Steam shows either one full screen. The site lock, controller support and exits work the same in both.
+Anything you add to a shortcut's **Launch Options** in Steam after `--steam-account <ID>` is passed to the app, for example `--debug-gpu` for VacuumTube.
 
 ## Commands
 
-The installer places a `steamos-yt` command in `~/.local/share/steamos-yt/bin/`:
+The installer places the `nonsteamapps` command in `~/.local/share/nonsteamapps/bin/`:
 
 ```text
-steamos-yt                     start the kiosk (what Steam runs)
-steamos-yt launch [--steam-account ID] [URL] [-- FLAGS]
-                               start as a given Steam account, open a specific URL or pass Helium flags
-steamos-yt update [--force]    install the newest signed Helium
-steamos-yt rollback            switch back to the previously installed Helium
-steamos-yt steam add|remove|status [--name NAME] [--user all|auto|ID]
-steamos-yt doctor              diagnostics for troubleshooting
-steamos-yt uninstall [--purge] remove everything (--purge also deletes sign-in data)
+nonsteamapps install [APP...]        install or repair apps and add them to Steam
+nonsteamapps remove APP... [--purge] [--keep-app]
+                                     remove apps from Steam and uninstall those NonSteamApps installed;
+                                     --purge also deletes their data for every Steam account
+nonsteamapps list                    every app, and whether it is installed
+nonsteamapps update                  update the apps NonSteamApps installed, Helium included
+nonsteamapps rollback                switch Helium back to the version installed before
+nonsteamapps steam add|remove|status [APP...] [--user all|auto|ID]
+nonsteamapps doctor                  diagnostics, including each app's last launch log
+nonsteamapps uninstall [--purge] [--keep-apps]
+nonsteamapps launch APP [--steam-account ID] [--verbose] [-- ARGS]
+                                     what Steam runs
 ```
 
-`./uninstall.sh [--purge]` in this repository does the same as `steamos-yt uninstall`.
+`./uninstall.sh [--purge]` in this repository does the same as `nonsteamapps uninstall`. Without `--purge`, sign-ins and settings are kept.
+
+## Moving from SteamOS YT
+
+Installing NonSteamApps on a device with SteamOS YT, the Helium-based YouTube kiosk this project used to be, does the following:
+
+- **Shortcut:** the existing YouTube shortcut now starts VacuumTube. It keeps its Steam app ID, so its play time, collections, controller layout and resolution setting carry over.
+- **Shared sign-in:** if SteamOS YT was set to share one sign-in between Steam accounts, that choice carries over.
+- **Clean-up:** after asking, the installer removes SteamOS YT: Helium, its profiles, its settings, its update timer and its menu entry.
+- **Signing in again:** Helium's sign-ins cannot move to VacuumTube, so sign in to YouTube once for each Steam account.
 
 ## How it works
 
-```mermaid
-flowchart LR
-  Steam["Steam shortcut"] -->|"--steam-account ID"| Launcher["steamos-yt launcher"]
-  Launcher -->|"kiosk flags, the account's profile, TV user agent"| Helium["Helium"]
-  Helium --> Splash["Boot screen"]
-  Splash -->|"identity rules live"| TV["youtube.com/tv"]
-  Extension["Companion extension"] -.->|"Client Hints, gamepad → Starboard keys, media checks, exit, site lock, SponsorBlock, DeArrow, dislikes"| TV
-```
-
-1. **Identity**: YouTube only serves its TV interface to TV and console clients. The launcher passes a user agent in the format of Cobalt, YouTube's TV runtime. The extension rewrites the matching User-Agent Client Hints and `navigator.userAgentData`, so headers and JavaScript agree.
-2. **Boot screen**: Helium can begin its first navigation before extensions finish loading. The kiosk therefore opens a small self-contained boot screen, and the extension moves it on to YouTube once its header rules are confirmed live. The boot screen redirects on its own after six seconds if the extension is unavailable.
-3. **Controller bridge**: the TV interface expects Cobalt to deliver controller input as Starboard key codes (`0x8000` + standard button index, plus virtual codes for stick directions). The extension polls the Gamepad API and emits those codes. It prefers Steam's virtual gamepads, so a controller seen through Steam Input is never counted twice.
-4. **Media capabilities**: Cobalt rejects impossible media parameters (for example `framerate=9999`), and the player probes for this to detect 60 fps and HDR support. The extension reproduces those answers so high-frame-rate formats are offered.
-5. **Exit**: YouTube's *Exit* command, `window.close()` and the View + Menu combo all ask the extension to close the kiosk window, which ends the Steam session cleanly.
-6. **Community services**: the TV interface renders from innertube responses (`/youtubei/v1/browse`, `search` and `next`). The extension holds those responses back briefly to write in DeArrow titles and the dislike count, and lays DeArrow thumbnails over the `ytlr-thumbnail-details` elements YouTube paints thumbnails on. SponsorBlock follows the `<video>` element on the interface's `#/watch` route and announces skips through YouTube's own notice system.
-7. **Steam**: shortcuts are written to `userdata/<account>/config/shortcuts.vdf` with the ID Steam itself derives (`crc32(exe + name) | 0x80000000`). Artwork goes to `config/grid/` under the names Steam looks up. A backup of `shortcuts.vdf` is kept as `shortcuts.vdf.steamos-yt.bak`.
-8. **Profiles**: each account's shortcut carries `--steam-account <ID>` in its launch options (anything else you add there is kept). The launcher maps that ID to `profiles/<ID>/` and falls back to the most recent sign-in from Steam's `loginusers.vdf` when started elsewhere.
-9. **Site lock**: a declarativeNetRequest rule blocks top-level pages outside the allowed sites, with an exception for Google's "unusual traffic" check that keeps the TV identity's Client Hints. The extension's background closes every tab but the kiosk's and returns the kiosk tab from blocked pages and browser pages: back to where it was, or to the start page if that repeats within three seconds.
-
-Launches run with Steam's `LD_PRELOAD` and runtime library path removed, as Flatpak apps are, so Helium uses its own sandbox and the system libraries.
-
-| Path | Contents |
-| --- | --- |
-| `~/.local/share/steamos-yt/` | Launcher, helpers, extension, artwork, Helium versions, `profiles/<account ID>/` (each Steam account's sign-in data; `profile/` when shared) |
-| `~/.config/steamos-yt/` | `steamos-yt.conf`, `flags.conf` |
-| `~/.local/state/steamos-yt/launch.log` | Output of the last launch (`launch.log.1` for the one before) |
-| `~/.config/systemd/user/steamos-yt-update.*` | Weekly Helium update timer |
-| `~/.local/share/applications/steamos-yt.desktop` | Desktop Mode menu entry |
+1. `install.sh` copies the program to `~/.local/share/nonsteamapps` and runs `nonsteamapps install`.
+2. Each Flathub app is installed with `flatpak install --user`, unless it is already installed. The Helium apps share one signed Helium release, unpacked in `~/.local/share/nonsteamapps/helium`.
+3. Each app gets a link in `~/.local/share/nonsteamapps/apps/`, for example `apps/youtube`, pointing at the launcher. Steam's shortcut runs that link with `--steam-account <ID>`. Steam derives the shortcut's app ID from the link and the name, and NonSteamApps writes the shortcut to each account's `shortcuts.vdf`, with the artwork in the account's `grid` folder.
+4. When an app starts, the launcher works out the Steam account: the shortcut's, otherwise the most recent sign-in. It then:
+   - prepares that account's data (for a Helium app, its profile: preferences, a clean last exit and the shared Widevine folder);
+   - logs to `~/.local/state/nonsteamapps/<app>.log`;
+   - replaces itself with `flatpak run <app> …`, or with Helium and its console flags.
+5. For apps with a controller layout, NonSteamApps finds Valve's layout in Steam's `controller_base/templates` and records it for the shortcut in `steamapps/common/Steam Controller Configs/<ID>/config`, where Steam keeps the layout a user picks. It never replaces a layout you chose.
+6. A weekly systemd user timer runs `nonsteamapps update`. Discover updates any other Flatpaks.
 
 ## Troubleshooting
 
-Run `steamos-yt doctor` first; it reports versions, paths, the Steam shortcut, the timer state and the end of the last launch log.
-
-- **The desktop YouTube site appears**: YouTube rejected the TV identity. Make sure `YT_IDENTITY=cobalt` and `YT_USER_AGENT` is empty. If YouTube changes its rules, set `YT_USER_AGENT` to another TV user agent.
-- **The controller does nothing**: switch the shortcut's controller layout to a gamepad template. Outside Steam, press a button once so the browser can see the controller.
-- **The shortcut is missing**: Steam must be closed while its library is edited, which is impossible in Game Mode. From Desktop Mode, run `~/.local/share/steamos-yt/bin/steamos-yt steam add`. This also covers Steam accounts that first signed in after installation.
-- **The wrong YouTube account appears**: launches from the Desktop Mode menu use the most recently signed-in Steam account's profile. `steamos-yt doctor` shows which profile belongs to which account.
-- **Black screen or GPU errors**: set `YT_OZONE_PLATFORM=x11`, or try `--disable-gpu` in `flags.conf`, and check `launch.log`.
-- **Stutter or high battery use**: run `vainfo` to see which codecs your GPU decodes. Hide the others with `YT_BLOCK_CODECS`, for example `av1`.
-- **No skips, new titles or dislike counts**: check `YT_SPONSORBLOCK`, `YT_DEARROW` and `YT_RETURN_DISLIKES`, and that the services listed above are reachable from your network.
-- **A page you need does not open**: add its domain to `YT_ALLOWED_SITES`, or set `YT_BLOCK_OTHER_SITES=0`.
-- **A Helium update misbehaves**: `steamos-yt rollback`, then disable the timer with `systemctl --user disable --now steamos-yt-update.timer` until a fixed release arrives.
+- **"Steam is running in Game Mode":** switch to Desktop Mode and run the command again.
+- **An app does not start:** `nonsteamapps doctor` shows each app's last launch log; `nonsteamapps launch youtube --verbose` runs it in the terminal.
+- **A new Steam account has no shortcuts:** run `nonsteamapps steam add`.
+- **A Helium update misbehaves:** `nonsteamapps rollback` switches back to the previous version.
+- **A streaming app shows a playback error the first time:** close the app and open it again, once Widevine has downloaded. `nonsteamapps doctor` shows whether it has.
+- **The picture looks soft on a TV:** see [On a TV](#on-a-tv-use-its-full-resolution).
 
 ## Development
 
 ```bash
-python3 -m unittest discover -s tests          # VDF, Steam, profile, identity and helper CLI logic
-shellcheck -x -P SCRIPTDIR install.sh uninstall.sh src/bin/steamos-yt src/lib/common.sh tests/smoke/run.sh
-tests/smoke/run.sh [helium-*_linux.tar.xz]     # end-to-end: real Helium under Xvfb against a local YouTube stand-in
-node tools/render-artwork.js                   # re-render assets/artwork from assets/src (Playwright + Inter fonts)
+python3 -m unittest discover -s tests          # apps, Flatpak, Helium (with real signatures), Steam, layouts, migration and command-line flows
+shellcheck -x -P SCRIPTDIR install.sh uninstall.sh src/bin/nonsteamapps tests/sandbox.sh
+tests/sandbox.sh                               # install.sh, launches through the links Steam runs, uninstall.sh
+node tools/render-artwork.js [APP...]          # render assets/src/<app> into assets/artwork/<app>
 ```
-
-The smoke test installs into a throwaway home folder. It serves an HTTPS stand-in for `www.youtube.com/tv` and checks:
-
-- the user agent, Client Hints and `userAgentData`, including on the first navigation;
-- the controller, wheel and media-capability behaviour;
-- SponsorBlock skips and notices, DeArrow titles and thumbnails, and dislike counts, against mocked services, under a page security policy that blocks third-party images and enforces Trusted Types as YouTube's does. This includes checking that lookups use hash prefixes, that the policy stays in force, that thumbnails follow recycled tiles and that a DeArrow image which fails to load leaves YouTube's in place;
-- all three exit paths, each of which must close the kiosk, one of them in app mode;
-- the site lock: a pop-up closes, a page on another site never reaches the network and the kiosk returns to YouTube;
-- separate profiles per Steam account: the first account inherits the earlier shared profile, a cookie set by one account stays invisible to another, and each account's cookies persist across launches.
 
 | Path | Purpose |
 | --- | --- |
 | `install.sh`, `uninstall.sh` | Entry points (work from a clone or through `curl … \| bash`) |
-| `src/bin/steamos-yt` | Launcher and management CLI (Bash) |
-| `src/lib/common.sh` | Shared shell helpers: Helium download, signature checks, Steam process control |
-| `src/lib/steamos_yt/` | Python standard-library helpers: binary/text VDF, Steam shortcuts and artwork, profile, identity |
-| `src/extension/` | Manifest V3 companion extension: `page.js` (controller, identity, media, exit), `services.js`, `thumbnails.js` and `api.js` (SponsorBlock, DeArrow, Return YouTube Dislike), `background.js` (boot screen, site lock, service lookups); `config.js`, `config.json` and `rules.json` are generated at launch |
-| `src/share/` | Default settings, desktop entry and systemd units |
-| `assets/src`, `assets/artwork` | SVG sources and rendered Steam artwork |
-| `keys/helium.asc` | Helium's public signing key (fingerprint `BE67 7C19 89D3 5EAB 2C5F 26C9 3516 01AD 01D6 378E`) |
+| `src/bin/nonsteamapps` | Launcher: runs the command-line interface, or starts an app when called through its link |
+| `src/lib/nonsteamapps/` | Python standard-library package: `apps.py` (the apps), `flatpak.py`, `helium.py` (the signed Helium release), `browser.py` (console profiles and flags), `controllers.py` (Steam layouts), `steam.py` and `vdf.py` (shortcuts and artwork), `steamclient.py`, `legacy.py` (SteamOS YT), `cli.py` |
+| `src/share/` | Default settings, the update timer and Helium's public signing key (fingerprint `BE67 7C19 89D3 5EAB 2C5F 26C9 3516 01AD 01D6 378E`) |
+| `assets/src/<app>`, `assets/artwork/<app>` | SVG sources and rendered Steam artwork |
+| `tests/fakes/flatpak` | Stand-in for `flatpak`, used by the tests; `tests/_fakes.py` also builds a stand-in Helium release |
+
+To add an app:
+
+1. Add an `App` to `apps.py` with its Flathub ID, arguments and per-account data.
+2. Draw its artwork in `assets/src/<app>` and render it.
+3. Extend the tests.
+
+## Roadmap
+
+- [ADR 0001](docs/decisions/0001-multi-app-steam-integration.md): why NonSteamApps installs upstream clients from Flathub and owns only the Steam integration.
+- [Maximum Game Resolution plan](docs/plans/steam-native-resolution.md): set **Native** for every app and account automatically.
+- Steam Input layouts for each app, for example a mouse-and-keyboard layout for Element.
 
 ## Acknowledgements
 
-- [Helium](https://github.com/imputnet/helium) by imput: the browser this project runs in.
-- [VacuumTube](https://github.com/shy1132/VacuumTube): its research into YouTube's TV client informed the Cobalt identity, the Starboard key codes, the media-capability behaviour and the TV-side SponsorBlock, DeArrow and dislike integrations reproduced here.
-- [SponsorBlock](https://sponsor.ajay.app) and [DeArrow](https://dearrow.ajay.app) by Ajay Ramachandran and contributors, and [Return YouTube Dislike](https://returnyoutubedislike.com): the community data behind the skips, titles, thumbnails and dislike counts.
-- [Steam ROM Manager](https://github.com/SteamGridDB/steam-rom-manager): reference for Steam's shortcut and artwork conventions.
+- [VacuumTube](https://github.com/shy1132/VacuumTube) by shy1132 and contributors, which brings YouTube's TV interface to the desktop.
+- [Element](https://github.com/element-hq/element-web), and the maintainers of its [Flathub package](https://github.com/flathub/im.riot.Riot).
+- [Jellyfin Desktop](https://github.com/jellyfin/jellyfin-desktop) by the Jellyfin project.
+- [LocalSend](https://github.com/localsend/localsend) by Tien Do Nam and contributors.
+- [Helium](https://github.com/imputnet/helium) by imput, built on ungoogled-chromium.
+- [Steam ROM Manager](https://github.com/SteamGridDB/steam-rom-manager): reference for Steam's shortcut, artwork and controller conventions.
 
-SteamOS YT is not affiliated with Google, YouTube, Valve or imput. YouTube is a trademark of Google LLC; Steam and SteamOS are trademarks of Valve Corporation. The artwork in this repository is original.
+NonSteamApps is not affiliated with Valve, Google, Element, the Matrix.org Foundation, the Jellyfin project, LocalSend, imput, Amazon, Warner Bros. Discovery, Netflix or The Walt Disney Company. YouTube is a trademark of Google LLC; Steam and SteamOS are trademarks of Valve Corporation; other names belong to their owners. The artwork in this repository is original.

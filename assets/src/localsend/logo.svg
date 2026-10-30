@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1168" height="360" viewBox="0 0 1168 360">
+  <defs>
+    <linearGradient id="screen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3ADBEF"/>
+      <stop offset="1" stop-color="#0A86B5"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="0.55" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-20%" width="120%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+    <symbol id="emblem" viewBox="0 0 240 204">
+      <rect x="0" y="0" width="240" height="168" rx="46" fill="url(#screen)"/>
+      <rect x="0" y="0" width="240" height="168" rx="46" fill="url(#gloss)"/>
+      <path d="M70 65 H150" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round"/>
+      <path d="M144 47 L170 65 L144 83 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="8" stroke-linejoin="round"/>
+      <path d="M90 103 H170" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round"/>
+      <path d="M96 85 L70 103 L96 121 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="8" stroke-linejoin="round"/>
+      <rect x="76" y="182" width="88" height="16" rx="8" fill="#3ADBEF"/>
+    </symbol>
+  </defs>
+  <g filter="url(#shadow)">
+    <use href="#emblem" x="24" y="48" width="300" height="255"/>
+    <text x="372" y="226" font-family="Inter Display" font-weight="900" font-size="158.8" letter-spacing="-5.7" fill="#FFFFFF">LocalSend</text>
+    <text x="382" y="300" font-family="Inter" font-weight="600" font-size="44" letter-spacing="19" fill="#FFFFFF" fill-opacity="0.78">SHARE NEARBY</text>
+  </g>
+</svg>

@@ -2,7 +2,7 @@ import struct
 import unittest
 
 import _paths  # noqa: F401
-from steamos_yt import vdf
+from nonsteamapps import vdf
 
 
 def cstr(text: str) -> bytes:

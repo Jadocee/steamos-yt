@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# nonsteamapps: installs apps from Flathub and adds them to the Steam library.
+# Steam starts each app through a link to this script named after the app
+# (apps/youtube and so on), which becomes "nonsteamapps launch <app>".
+set -Eeuo pipefail
+
+app_home=$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.." && pwd -P)
+name=$(basename -- "$0")
+if [[ $name != nonsteamapps ]]; then
+    set -- launch "$name" "$@"
+fi
+exec python3 -B -E -s "$app_home/lib/nonsteamapps-cli" "$@"

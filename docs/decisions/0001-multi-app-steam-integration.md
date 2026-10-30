@@ -157,6 +157,13 @@ The owner answered the open questions. Where these answers differ from the text 
    - **DRM:** Helium fetches Widevine through Helium's services, which are therefore on by default (`HELIUM_SERVICES`). On Linux, Widevine runs at L3, so Prime Video plays in standard definition, and HBO Max has no official Linux support.
 9. **Controller layouts (part of phase 4).** Apps without controller navigation are given Valve's Web Browser layout: Element, LocalSend and the Helium apps. NonSteamApps finds the layout by its English title in `controller_base/templates` and records it in Steam's per-account `configset_<controller>.vdf`, in the format Steam ROM Manager uses. It marks those entries as its own and never touches a layout the user picked.
 
+10. **Netflix, Disney+ and a privacy review (owner request).** Netflix and Disney+ run as Helium kiosk apps, like Prime Video and HBO Max. On Linux, Netflix limits Widevine L3 to 720p [7]; Disney+ plays, but may limit quality too [8]. A review of Helium for privacy, security, TV use and ad blocking keeps Helium's own defaults: uBlock Origin, third-party cookie blocking, WebRTC limited to the public interface, fingerprinting noise and balanced HTTPS-First mode [9]. It adds three settings, each checked on Helium 0.20.1.1:
+    - new profiles send Global Privacy Control (`Sec-GPC: 1` and `navigator.globalPrivacyControl`);
+    - new profiles keep crash reports off (`helium.crash_reporting.mode` set to −1 in Local State), so no upload question follows a crash;
+    - every Helium app starts with `--force-dark-mode`. Helium's interface turns dark and sites see `prefers-color-scheme: dark`, while Helium's own Mode setting still takes precedence.
+
+    The first two are written only into a new profile. Chromium drops a value that equals its default, so a later write could not tell a user's choice from no choice. Left out, with the reasons in the README: extra extensions (including Netflix 1080p unlockers), strict HTTPS-only mode, a fixed DNS-over-HTTPS provider, JavaScript without its optimiser, a site lock for the kiosk apps and changes to uBlock Origin's lists. No browser setting removes the ads that the services deliver in their ad-supported plans.
+
 Still open: layouts NonSteamApps designs itself, and Maximum Game Resolution (the rest of migration phase 4).
 
 ## Sources
@@ -167,3 +174,6 @@ Still open: layouts NonSteamApps designs itself, and Maximum Game Resolution (th
 4. [Jellyfin Desktop](https://github.com/jellyfin/jellyfin-desktop): `src/main.cpp` for its options and `src/system/SystemComponent.cpp` for SteamOS detection; [Flathub](https://flathub.org/apps/org.jellyfin.JellyfinDesktop); [AlternativeTo on the 2.0 release](https://alternativeto.net/news/2025/12/jellyfin-desktop-2-0-launches-with-rebranding-qt-6-upgrade-and-fresh-features)
 5. [NonSteamLaunchers](https://github.com/moraroy/NonSteamLaunchers-On-Steam-Deck)
 6. [Steam ROM Manager](https://github.com/SteamGridDB/steam-rom-manager), `src/lib/controller-manager.ts`
+7. [Linux Uprising: how to stream Netflix videos at 1080p](https://www.linuxuprising.com/2018/07/how-to-stream-netflix-videos-at-1080p.html), on the 720p limit for browsers with software Widevine
+8. [Phoronix: Disney+ not working on Linux](https://www.phoronix.com/news/Disney-Plus-Not-On-Linux), and [Slashdot: Linux users can now use Disney+ after a DRM fix](https://linux.slashdot.org/story/19/12/08/169213/linux-users-can-now-use-disney-after-drm-fix)
+9. [Helium](https://github.com/imputnet/helium) patches: `patches/helium/core/prefer-https-by-default.patch`, `patches/helium/core/crash-reporting-prefs.patch` and `patches/helium/core/noise/`

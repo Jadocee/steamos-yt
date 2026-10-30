@@ -24,6 +24,7 @@ class PreferencesTests(unittest.TestCase):
         browser.write_preferences(self.profile, services=True, kiosk=True)
         data = self.read()
         self.assertTrue(data["helium"]["completed_onboarding"])
+        self.assertTrue(data["helium"]["global_privacy_control"])
         self.assertEqual(data["helium"]["services"], {"enabled": True, "user_consented": True, "schema_version": 1})
         self.assertEqual(data["profile"]["exit_type"], "Normal")
         self.assertFalse(data["translate"]["enabled"])
@@ -35,18 +36,21 @@ class PreferencesTests(unittest.TestCase):
         data = self.read()
         self.assertNotIn("translate", data)
         self.assertNotIn("credentials_enable_service", data)
+        self.assertTrue(data["helium"]["global_privacy_control"])
         self.assertEqual(data["profile"]["default_content_setting_values"], {"notifications": 2})
 
     def test_later_starts_mark_a_clean_exit_and_keep_the_users_choices(self):
         browser.write_preferences(self.profile, services=True, kiosk=True)
         data = self.read()
         data["translate"]["enabled"] = True
+        del data["helium"]["global_privacy_control"]
         data["profile"]["exit_type"] = "Crashed"
         data["helium"]["services"]["schema_version"] = 3
         self.preferences.write_text(json.dumps(data))
         browser.write_preferences(self.profile, services=False, kiosk=True)
         data = self.read()
         self.assertTrue(data["translate"]["enabled"])
+        self.assertNotIn("global_privacy_control", data["helium"])
         self.assertEqual((data["profile"]["exit_type"], data["profile"]["exited_cleanly"]), ("Normal", True))
         self.assertFalse(data["helium"]["services"]["enabled"])
         self.assertEqual(data["helium"]["services"]["schema_version"], 3)
@@ -77,6 +81,13 @@ class ProfileTests(unittest.TestCase):
         self.assertFalse(os.path.lexists(self.profile / "SingletonSocket"))
         self.assertFalse(browser.clear_stale_lock(self.profile))
 
+    def test_new_profiles_start_with_crash_reports_off_and_keep_a_later_choice(self):
+        state = browser.write_local_state(self.profile)
+        self.assertEqual(json.loads(state.read_text()), {"helium": {"crash_reporting": {"mode": -1}}})
+        state.write_text(json.dumps({"helium": {"crash_reporting": {}}, "browser": {"enabled_labs_experiments": []}}))
+        browser.write_local_state(self.profile)
+        self.assertEqual(json.loads(state.read_text())["helium"]["crash_reporting"], {})
+
     def test_every_profile_shares_one_widevine_folder(self):
         shared = self.dir / "helium" / "WidevineCdm"
         browser.link_widevine(self.profile, shared)
@@ -102,7 +113,7 @@ class ScaleAndFlagTests(unittest.TestCase):
     def test_full_screen_apps_run_as_a_kiosk_with_tv_input(self):
         arguments = browser.flags(Path("/p"), "https://www.primevideo.com/", True, True, 1.5, "nonsteamapps-primevideo")
         self.assertEqual(arguments[:3], ["--user-data-dir=/p", "--class=nonsteamapps-primevideo", "--no-first-run"])
-        for flag in ("--kiosk", "--enable-spatial-navigation", "--password-store=basic", "--ozone-platform=x11",
+        for flag in ("--kiosk", "--enable-spatial-navigation", "--force-dark-mode", "--password-store=basic", "--ozone-platform=x11",
                      "--force-device-scale-factor=1.5", "--autoplay-policy=no-user-gesture-required"):
             self.assertIn(flag, arguments)
         self.assertEqual(arguments[-1], "https://www.primevideo.com/")

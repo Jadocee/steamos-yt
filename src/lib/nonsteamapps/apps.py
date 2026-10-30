@@ -218,6 +218,24 @@ APPS: Tuple[App, ...] = (
         controller=WEB_BROWSER,
         logo_position="BottomLeft:44:56",
     ),
+    App(
+        id="netflix",
+        name="Netflix",
+        client="Helium",
+        summary="Netflix's series and films, full screen in Helium",
+        browser=Browser(url="https://www.netflix.com/", kiosk=True),
+        controller=WEB_BROWSER,
+        logo_position="BottomLeft:44:56",
+    ),
+    App(
+        id="disneyplus",
+        name="Disney+",
+        client="Helium",
+        summary="Disney+'s films and series, full screen in Helium",
+        browser=Browser(url="https://www.disneyplus.com/", kiosk=True),
+        controller=WEB_BROWSER,
+        logo_position="BottomLeft:44:56",
+    ),
 )
 
 

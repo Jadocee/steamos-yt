@@ -11,10 +11,14 @@ HOME = Path("/home/deck")
 
 class RegistryTests(unittest.TestCase):
     def test_ids_and_lookup(self):
-        self.assertEqual(apps.ids(), ["youtube", "element", "jellyfin", "localsend", "helium", "primevideo", "hbomax"])
+        self.assertEqual(
+            apps.ids(),
+            ["youtube", "element", "jellyfin", "localsend", "helium", "primevideo", "hbomax", "netflix", "disneyplus"],
+        )
         self.assertEqual(apps.by_id(" YouTube ").flatpak, "rocks.shy.VacuumTube")
+        self.assertEqual(apps.by_id("DisneyPlus").name, "Disney+")
         with self.assertRaises(KeyError):
-            apps.by_id("netflix")
+            apps.by_id("kodi")
 
     def test_every_app_ships_its_artwork(self):
         artwork = Path(_paths.ROOT) / "assets" / "artwork"
@@ -45,11 +49,15 @@ class ArgumentTests(unittest.TestCase):
 
     def test_helium_apps_run_in_helium_with_the_web_browser_layout(self):
         for app_id, url, kiosk in (("helium", "", False), ("primevideo", "https://www.primevideo.com/", True),
-                                   ("hbomax", "https://www.hbomax.com/", True)):
+                                   ("hbomax", "https://www.hbomax.com/", True), ("netflix", "https://www.netflix.com/", True),
+                                   ("disneyplus", "https://www.disneyplus.com/", True)):
             app = apps.by_id(app_id)
-            self.assertEqual((app.flatpak, app.browser.url, app.browser.kiosk), ("", url, kiosk))
+            self.assertEqual((app.flatpak, app.client, app.browser.url, app.browser.kiosk), ("", "Helium", url, kiosk))
             self.assertEqual(app.controller, apps.WEB_BROWSER)
-        self.assertEqual([app.id for app in apps.APPS if app.controller], ["element", "localsend", "helium", "primevideo", "hbomax"])
+        self.assertEqual(
+            [app.id for app in apps.APPS if app.controller],
+            ["element", "localsend", "helium", "primevideo", "hbomax", "netflix", "disneyplus"],
+        )
 
     def test_jellyfin_starts_in_its_tv_layout_with_a_named_profile(self):
         self.assertEqual(apps.by_id("jellyfin").arguments(HOME, 333), ["--tv", "--fullscreen", "--profile=steam-333"])

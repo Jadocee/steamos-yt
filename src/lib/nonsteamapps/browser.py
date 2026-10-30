@@ -3,8 +3,14 @@
 Each app keeps one Helium profile per Steam account. Before every start, the
 profile is told it closed cleanly (Steam ends apps by signalling them) and that
 first-run pages are done. Arrow keys move between links and buttons (spatial
-navigation), and in Game Mode the interface scales with the screen, so a TV
-reads like a TV app.
+navigation), Helium and sites that offer a dark theme start dark (Helium's
+Mode setting can still choose light), and in Game Mode the interface scales
+with the screen, so a TV reads like a TV app.
+
+Helium already blocks ads (uBlock Origin), third-party cookies and WebRTC's
+local addresses, adds fingerprinting noise and keeps background mode, link
+auditing and preloading off; new profiles also send Global Privacy Control
+and do not keep crash reports to offer for upload.
 """
 
 from __future__ import annotations
@@ -21,6 +27,7 @@ from .fsutil import atomic_write_bytes, atomic_write_json
 
 BLOCK = 2
 SCHEMA_VERSION = 1
+CRASH_REPORTS_OFF = -1
 FEATURES = "AcceleratedVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxZeroCopyGL"
 TV_HEIGHT = 720
 BROWSER_BINARIES = ("helium", "chrome", "chromium")
@@ -37,8 +44,9 @@ def deep_merge(base: dict, overlay: dict) -> dict:
 
 
 def first_run_preferences(kiosk: bool) -> dict:
-    """Written once, into a new profile: no notification requests, and for full-screen apps no other prompts."""
+    """Written once, into a new profile: Global Privacy Control, no notification requests, and for full-screen apps no other prompts."""
     preferences: dict = {
+        "helium": {"global_privacy_control": True},
         "browser": {"has_seen_welcome_page": True},
         "profile": {"default_content_setting_values": {"notifications": BLOCK}},
     }
@@ -93,6 +101,14 @@ def write_preferences(profile: Path, services: bool, kiosk: bool) -> Path:
     return path
 
 
+def write_local_state(profile: Path) -> Path:
+    """Start a new profile with crash reports off, so no upload question follows a crash; later starts keep the user's choice."""
+    path = Path(profile) / "Local State"
+    if not path.exists():
+        atomic_write_json(path, {"helium": {"crash_reporting": {"mode": CRASH_REPORTS_OFF}}}, compact=True)
+    return path
+
+
 def clear_stale_lock(profile: Path) -> bool:
     """Remove a lock left by a Helium that is no longer running, which would block the next start."""
     lock = Path(profile) / "SingletonLock"
@@ -128,6 +144,7 @@ def link_widevine(profile: Path, shared: Path) -> None:
 def prepare(profile: Path, services: bool, kiosk: bool, widevine: Path) -> None:
     Path(profile).mkdir(parents=True, exist_ok=True)
     write_preferences(profile, services, kiosk)
+    write_local_state(profile)
     clear_stale_lock(profile)
     link_widevine(profile, widevine)
 
@@ -172,6 +189,7 @@ def flags(profile: Path, url: str, kiosk: bool, game_mode: bool, factor: Optiona
         "--hide-crash-restore-bubble",
         "--noerrdialogs",
         "--enable-spatial-navigation",
+        "--force-dark-mode",
         f"--enable-features={FEATURES}",
         "--ozone-platform=x11" if game_mode else "--ozone-platform-hint=auto",
     ]

@@ -111,8 +111,8 @@ class InstallTests(CliTestCase):
         self.assertEqual(sorted(self.entries(ALPHA)), ["YouTube"])
 
     def test_unknown_app_is_rejected(self):
-        self.assertEqual(self.run_cli("install", "netflix", "--yes"), 1)
-        self.assertIn("unknown app 'netflix'", self.errors)
+        self.assertEqual(self.run_cli("install", "kodi", "--yes"), 1)
+        self.assertIn("unknown app 'kodi'", self.errors)
 
     def test_refuses_to_close_steam_in_game_mode(self):
         with mock.patch("nonsteamapps.steamclient.running", return_value=True), \
@@ -212,7 +212,7 @@ class LaunchTests(CliTestCase):
         redirect.assert_called_once_with(self.paths.log("localsend"))
 
     def test_unknown_or_missing_app(self):
-        self.assertEqual(self.run_cli("launch", "netflix"), 1)
+        self.assertEqual(self.run_cli("launch", "kodi"), 1)
         self.assertEqual(self.run_cli("launch", "--steam-account", "1"), 1)
 
 
@@ -300,13 +300,14 @@ class HeliumAppTests(CliTestCase):
 
     def test_helium_apps_share_one_helium_and_get_the_web_browser_layout(self):
         self.add_templates()
-        self.install("youtube", "element", "helium", "primevideo", "hbomax")
+        self.install("youtube", "element", "helium", "primevideo", "hbomax", "netflix", "disneyplus")
         self.assertEqual(cli._runtime(self.paths).current(), "0.0.0.1")
         for account in (ALPHA, BETA):
-            self.assertEqual(sorted(self.configset(account)), ["element", "hbo max", "helium", "prime video"])
+            self.assertEqual(sorted(self.configset(account)),
+                             ["disney+", "element", "hbo max", "helium", "netflix", "prime video"])
         self.assertIn("Steam's Web Browser controller layout", self.errors)
-        self.assertEqual(self.run_cli("remove", "element", "hbomax", "--yes"), 0, self.errors)
-        self.assertEqual(sorted(self.configset()), ["helium", "prime video"])
+        self.assertEqual(self.run_cli("remove", "element", "hbomax", "disneyplus", "--yes"), 0, self.errors)
+        self.assertEqual(sorted(self.configset()), ["helium", "netflix", "prime video"])
 
     def test_missing_layouts_are_reported_not_fatal(self):
         self.install("helium")
@@ -321,9 +322,12 @@ class HeliumAppTests(CliTestCase):
         self.assertEqual(argv[1], f"--user-data-dir={profile}")
         self.assertIn("--kiosk", argv)
         self.assertIn("--enable-spatial-navigation", argv)
+        self.assertIn("--force-dark-mode", argv)
         self.assertEqual(argv[-1], "https://www.primevideo.com/")
         preferences = json.loads((profile / "Default" / "Preferences").read_text())
         self.assertEqual(preferences["helium"]["services"]["schema_version"], 1)
+        self.assertTrue(preferences["helium"]["global_privacy_control"])
+        self.assertEqual(json.loads((profile / "Local State").read_text())["helium"]["crash_reporting"]["mode"], -1)
         self.assertEqual((profile / "WidevineCdm").resolve(), runtime.widevine.resolve())
         redirect.assert_called_once_with(self.paths.log("primevideo"))
 

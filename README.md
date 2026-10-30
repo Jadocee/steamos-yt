@@ -75,9 +75,9 @@ In Game Mode, keep a **gamepad** controller layout for the shortcut (Steam's def
 
 ### On a TV: use its full resolution
 
-In Game Mode, Steam decides the resolution each game runs at. On an external display its default is usually lower than the TV's own, so YouTube's interface is upscaled and it offers lower video qualities. With the Steam Deck connected to the TV, select YouTube in your library, then **⚙ → Properties → General → Game resolution → Native**. The setting only appears while an external display is connected; if several Steam accounts use the Deck, check it for each.
+In Game Mode, Steam decides the resolution each game runs at. On an external display its default is usually lower than the TV's own, so YouTube's interface is upscaled and it offers lower video qualities. With the Steam Deck connected to the TV, select YouTube in your library, then **⚙ → Properties → Shortcut → Maximum Game Resolution → Native**. The setting only appears while an external display is connected; if several Steam accounts use the Deck, check it for each.
 
-The installer cannot set this for you. Steam stores it internally and offers no supported way to change it from outside the Steam client. Once YouTube runs at Native, `YT_MAX_RESOLUTION=auto` lets YouTube offer qualities up to the TV's resolution.
+The installer cannot set this for you yet. Steam stores it internally and offers no supported way to change it from outside the Steam client; [docs/plans/steam-native-resolution.md](docs/plans/steam-native-resolution.md) describes how automating it is planned. Once YouTube runs at Native, `YT_MAX_RESOLUTION=auto` lets YouTube offer qualities up to the TV's resolution.
 
 The Steam overlay is switched off for the shortcut (the *Enable the Steam Overlay while in-game* option in its properties). In Game Mode, the Steam button's menu and the Quick Access menu are drawn by Steam itself, not by the overlay.
 
@@ -235,6 +235,11 @@ Run `steamos-yt doctor` first; it reports versions, paths, the Steam shortcut, t
 - **No skips, new titles or dislike counts**: check `YT_SPONSORBLOCK`, `YT_DEARROW` and `YT_RETURN_DISLIKES`, and that the services listed above are reachable from your network.
 - **A page you need does not open**: add its domain to `YT_ALLOWED_SITES`, or set `YT_BLOCK_OTHER_SITES=0`.
 - **A Helium update misbehaves**: `steamos-yt rollback`, then disable the timer with `systemctl --user disable --now steamos-yt-update.timer` until a fixed release arrives.
+
+## Roadmap
+
+- [ADR 0001](docs/decisions/0001-multi-app-steam-integration.md): the project is becoming a Steam integration installer for several living-room apps. Planned apps are YouTube (through VacuumTube), Jellyfin and Element; today's Helium engine stays for web-only apps.
+- [Maximum Game Resolution plan](docs/plans/steam-native-resolution.md): set **Native** for every Steam account automatically.
 
 ## Development
 

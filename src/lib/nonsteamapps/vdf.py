@@ -319,3 +319,25 @@ def loads_text(text: str) -> KeyValues:
     if len(stack) != 1:
         raise VdfError("unbalanced opening brace")
     return root
+
+
+def _quote(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def dumps_text(root: KeyValues) -> str:
+    """Encode ``root`` as text VDF in Steam's tab-indented layout; leaves are written as strings."""
+    lines: List[str] = []
+    _write_text(lines, root, 0)
+    return "\n".join(lines) + "\n"
+
+
+def _write_text(lines: List[str], node: KeyValues, depth: int) -> None:
+    indent = "\t" * depth
+    for key, value in node.items():
+        if isinstance(value, KeyValues):
+            lines += [f"{indent}{_quote(key)}", f"{indent}{{"]
+            _write_text(lines, value, depth + 1)
+            lines.append(f"{indent}}}")
+        else:
+            lines.append(f"{indent}{_quote(key)}\t\t{_quote(str(value))}")

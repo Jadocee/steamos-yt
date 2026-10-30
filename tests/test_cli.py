@@ -1,5 +1,6 @@
 import contextlib
 import io
+import json
 import os
 import tempfile
 import unittest
@@ -28,6 +29,8 @@ class CliTestCase(unittest.TestCase):
         self.paths = _fakes.make_paths(self.home)
         self.fake = _fakes.FakeFlatpak(Path(self.tmp.name), self.preinstalled())
         self.flatpak = cli.Flatpak(self.fake.command)
+        (Path(self.tmp.name) / "release").mkdir()
+        self.helium_archive = _fakes.make_helium_archive(Path(self.tmp.name) / "release")
         patches = [
             mock.patch.dict(os.environ, _fakes.environment(self.home, self.fake), clear=True),
             mock.patch("nonsteamapps.steamclient.running", return_value=False),
@@ -50,19 +53,21 @@ class CliTestCase(unittest.TestCase):
         return status
 
     def install(self, *names):
-        self.assertEqual(self.run_cli("install", *names, "--yes", "--no-auto-update"), 0, self.errors)
+        options = ("--yes", "--no-auto-update", "--helium-archive", str(self.helium_archive), "--skip-verify")
+        self.assertEqual(self.run_cli("install", *names, *options), 0, self.errors)
 
     def entries(self, account):
         data = (steam.config_dir(self.root, account) / "shortcuts.vdf").read_bytes()
         return {entry.get("AppName"): entry for entry in vdf.loads_binary(data).get("shortcuts").values()}
 
     def launch(self, *argv):
-        with mock.patch("nonsteamapps.cli.os.execvp", side_effect=fake_exec) as execvp, \
+        with mock.patch("nonsteamapps.cli.os.execvp", side_effect=fake_exec), \
+                mock.patch("nonsteamapps.cli.os.execv", side_effect=fake_exec), \
                 mock.patch("nonsteamapps.cli._redirect") as redirect, \
                 contextlib.redirect_stdout(io.StringIO()):
-            with self.assertRaises(Exec):
+            with self.assertRaises(Exec) as raised:
                 cli.main(["launch", *argv], self.paths, self.flatpak)
-        return execvp.call_args[0][1], redirect
+        return raised.exception.args[0], redirect
 
 
 class InstallTests(CliTestCase):
@@ -74,10 +79,11 @@ class InstallTests(CliTestCase):
         )
         record = config.Record.load(self.paths.record)
         self.assertEqual(record.managed(), apps.ids())
-        self.assertTrue(all(record.owns_flatpak(app_id) for app_id in apps.ids()))
+        self.assertEqual([app.id for app in apps.APPS if record.owns_flatpak(app.id)], ["youtube", "element", "jellyfin", "localsend"])
+        self.assertEqual(cli._runtime(self.paths).current(), "0.0.0.1")
         for account in (ALPHA, BETA):
             entries = self.entries(account)
-            self.assertEqual(sorted(entries), ["Element", "Jellyfin", "LocalSend", "YouTube"])
+            self.assertEqual(sorted(entries), sorted(app.name for app in apps.APPS))
             for app in apps.APPS:
                 entry = entries[app.name]
                 self.assertEqual(entry.get("Exe"), f'"{self.paths.app_link(app.id)}"')
@@ -160,7 +166,7 @@ class MigrationTests(CliTestCase):
 
     def test_keeps_steamos_yt_when_the_steam_library_is_left_alone(self):
         _fakes.make_legacy(self.home, self.root)
-        self.assertEqual(self.run_cli("install", "--yes", "--no-auto-update", "--no-steam"), 0, self.errors)
+        self.assertEqual(self.run_cli("install", "youtube", "--yes", "--no-auto-update", "--no-steam"), 0, self.errors)
         self.assertTrue((self.home / ".local/share/steamos-yt/bin/steamos-yt").exists())
         self.assertIn("Kept SteamOS YT", self.errors)
 
@@ -277,3 +283,95 @@ class InformationTests(CliTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HeliumAppTests(CliTestCase):
+    def add_templates(self):
+        folder = self.root / "controller_base" / "templates"
+        folder.mkdir(parents=True)
+        (folder / "controller_neptune_webbrowser.vdf").write_text(
+            '"controller_mappings"\n{\n "controller_type" "controller_neptune"\n'
+            ' "localization" { "english" { "title" "Web Browser" } }\n}\n'
+        )
+
+    def configset(self, account=ALPHA):
+        path = self.root / f"steamapps/common/Steam Controller Configs/{account}/config/configset_controller_neptune.vdf"
+        return vdf.loads_text(path.read_text()).get("controller_config") if path.exists() else vdf.KeyValues()
+
+    def test_helium_apps_share_one_helium_and_get_the_web_browser_layout(self):
+        self.add_templates()
+        self.install("youtube", "element", "helium", "primevideo", "hbomax")
+        self.assertEqual(cli._runtime(self.paths).current(), "0.0.0.1")
+        for account in (ALPHA, BETA):
+            self.assertEqual(sorted(self.configset(account)), ["element", "hbo max", "helium", "prime video"])
+        self.assertIn("Steam's Web Browser controller layout", self.errors)
+        self.assertEqual(self.run_cli("remove", "element", "hbomax", "--yes"), 0, self.errors)
+        self.assertEqual(sorted(self.configset()), ["helium", "prime video"])
+
+    def test_missing_layouts_are_reported_not_fatal(self):
+        self.install("helium")
+        self.assertIn("Web Browser controller layout was not found", self.errors)
+
+    def test_prime_video_starts_full_screen_in_its_own_profile_for_each_account(self):
+        self.install("primevideo")
+        argv, redirect = self.launch("primevideo", "--steam-account", str(BETA))
+        runtime = cli._runtime(self.paths)
+        profile = self.paths.profiles / "primevideo" / str(BETA)
+        self.assertEqual(argv[0], str(runtime.executable))
+        self.assertEqual(argv[1], f"--user-data-dir={profile}")
+        self.assertIn("--kiosk", argv)
+        self.assertIn("--enable-spatial-navigation", argv)
+        self.assertEqual(argv[-1], "https://www.primevideo.com/")
+        preferences = json.loads((profile / "Default" / "Preferences").read_text())
+        self.assertEqual(preferences["helium"]["services"]["schema_version"], 1)
+        self.assertEqual((profile / "WidevineCdm").resolve(), runtime.widevine.resolve())
+        redirect.assert_called_once_with(self.paths.log("primevideo"))
+
+    def test_the_settings_choose_the_scale_and_services(self):
+        self.install("helium")
+        config.set_setting(self.paths.settings, cli.HELIUM_SCALE, "1.25")
+        config.set_setting(self.paths.settings, cli.HELIUM_SERVICES, "0")
+        argv, _ = self.launch("helium")
+        self.assertIn("--force-device-scale-factor=1.25", argv)
+        self.assertIn("--start-maximized", argv)
+        preferences = json.loads((self.paths.profiles / "helium" / str(ALPHA) / "Default" / "Preferences").read_text())
+        self.assertFalse(preferences["helium"]["services"]["enabled"])
+
+    def test_game_mode_scales_the_pages_for_the_tv(self):
+        self.install("hbomax")
+        with mock.patch("nonsteamapps.steamclient.in_game_mode", return_value=True), \
+                mock.patch("nonsteamapps.browser.screen_height", return_value=2160):
+            argv, _ = self.launch("hbomax", "--steam-account", str(ALPHA))
+        self.assertIn("--force-device-scale-factor=3", argv)
+        self.assertIn("--ozone-platform=x11", argv)
+        self.assertEqual(argv[-1], "https://www.hbomax.com/")
+
+    def test_helium_goes_with_the_last_app_that_uses_it(self):
+        self.install("helium", "primevideo")
+        self.assertEqual(self.run_cli("remove", "primevideo", "--yes"), 0, self.errors)
+        self.assertTrue(self.paths.helium.is_dir())
+        self.assertEqual(self.run_cli("remove", "helium", "--yes"), 0, self.errors)
+        self.assertFalse(self.paths.helium.exists())
+        with mock.patch("nonsteamapps.cli._redirect"):
+            self.assertEqual(self.run_cli("launch", "helium"), 1)
+        self.assertIn("Helium is not installed", self.errors)
+
+    def test_uninstall_keeps_helium_sign_ins_unless_purged(self):
+        self.install("helium")
+        self.launch("helium")
+        self.assertEqual(self.run_cli("uninstall", "--yes"), 0, self.errors)
+        self.assertEqual([path.name for path in self.paths.program.iterdir()], ["profiles"])
+        self.assertTrue((self.paths.profiles / "helium" / str(ALPHA) / "Default" / "Preferences").is_file())
+
+    def test_update_checks_helium_and_rollback_switches_back(self):
+        self.install("helium")
+        with mock.patch.object(cli.Runtime, "update", return_value="0.0.0.2"):
+            self.assertEqual(self.run_cli("update"), 0, self.errors)
+        self.assertIn("Updated Helium to 0.0.0.2", self.errors)
+        self.assertEqual(self.run_cli("rollback"), 1)
+        newer = Path(self.tmp.name) / "newer"
+        newer.mkdir()
+        self.assertEqual(self.run_cli("install", "helium", "--yes", "--no-auto-update",
+                                      "--helium-archive", str(_fakes.make_helium_archive(newer, "0.0.0.2")), "--skip-verify"), 0, self.errors)
+        self.assertEqual(self.run_cli("rollback"), 0, self.errors)
+        self.assertEqual(cli._runtime(self.paths).current(), "0.0.0.1")

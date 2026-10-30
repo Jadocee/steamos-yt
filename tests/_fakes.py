@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+import subprocess
 from pathlib import Path
 
 import _paths
@@ -85,3 +86,21 @@ def environment(home: Path, flatpak: FakeFlatpak, extra_path: str = "") -> dict:
     if extra_path:
         env["PATH"] = f"{extra_path}{os.pathsep}{env.get('PATH', '')}"
     return env
+
+
+def make_helium_archive(directory: Path, version: str = "0.0.0.1") -> Path:
+    """A Helium-shaped release archive whose wrapper records its arguments in $FAKE_HELIUM_LOG."""
+    staging = directory / f"build-{version}"
+    inner = staging / f"helium-{version}-x86_64_linux"
+    inner.mkdir(parents=True)
+    (inner / "helium").write_text("#!/bin/sh\n")
+    (inner / "helium-wrapper").write_text(
+        '#!/usr/bin/env python3\nimport json, os, sys\n'
+        'log = os.environ.get("FAKE_HELIUM_LOG")\n'
+        'if log:\n    open(log, "a").write(json.dumps(sys.argv[1:]) + "\\n")\n'
+    )
+    for name in ("helium", "helium-wrapper"):
+        (inner / name).chmod(0o755)
+    archive = directory / f"helium-{version}-x86_64_linux.tar.xz"
+    subprocess.run(["tar", "-cJf", str(archive), "-C", str(staging), inner.name], check=True)
+    return archive

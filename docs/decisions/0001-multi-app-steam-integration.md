@@ -150,7 +150,14 @@ The owner answered the open questions. Where these answers differ from the text 
 
 7. **LocalSend (added at the owner's request).** It comes from Flathub as `org.localsend.localsend_app`. It has no sign-in, so it has no per-account data: every Steam account shares its settings, and received files go to `~/Downloads`, the one folder its Flatpak may write.
 
-Still open: Steam Input layouts for each app, and Maximum Game Resolution (migration phase 4).
+8. **Helium returns as an engine (owner request).** The owner asked for Helium as a console-ready browser, and for Prime Video and HBO Max as apps running in it.
+   - **Delivery:** the `archive` backend comes back for Helium alone, because Helium refuses to ship a Flatpak. Like SteamOS YT, it downloads the release from GitHub, checks it against the bundled public key with `gpgv`, keeps two versions and can roll back.
+   - **Profiles:** each Helium app keeps one profile per Steam account. Before every start, NonSteamApps marks onboarding as done and the last exit as clean. It also links the profile's `WidevineCdm` to one shared folder, so Widevine downloads once.
+   - **Console flags:** the apps start with spatial navigation (`--enable-spatial-navigation`, checked on Helium 0.20 to move focus with the arrow keys), and scale for the TV in Game Mode. The streaming apps also run as a kiosk.
+   - **DRM:** Helium fetches Widevine through Helium's services, which are therefore on by default (`HELIUM_SERVICES`). On Linux, Widevine runs at L3, so Prime Video plays in standard definition, and HBO Max has no official Linux support.
+9. **Controller layouts (part of phase 4).** Apps without controller navigation are given Valve's Web Browser layout: Element, LocalSend and the Helium apps. NonSteamApps finds the layout by its English title in `controller_base/templates` and records it in Steam's per-account `configset_<controller>.vdf`, in the format Steam ROM Manager uses. It marks those entries as its own and never touches a layout the user picked.
+
+Still open: layouts NonSteamApps designs itself, and Maximum Game Resolution (the rest of migration phase 4).
 
 ## Sources
 

@@ -10,14 +10,17 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from . import __version__, apps, config, legacy, steam, steamclient, timer, ui
+from . import __version__, apps, browser, config, controllers, legacy, steam, steamclient, timer, ui
 from .apps import App
 from .config import Paths, Record
 from .flatpak import Flatpak, FlatpakError, Installed
+from .helium import HeliumError, Runtime
 
 EXIT_ERROR = 1
 EXIT_INTERRUPTED = 130
 PER_ACCOUNT = "PROFILE_PER_STEAM_ACCOUNT"
+HELIUM_SERVICES = "HELIUM_SERVICES"
+HELIUM_SCALE = "HELIUM_SCALE"
 RESOLUTION_HINT = "⚙ ▸ Properties ▸ Shortcut ▸ Maximum Game Resolution ▸ Native"
 
 
@@ -45,6 +48,10 @@ def _managed(record: Record) -> List[App]:
 def _listing(chosen: Sequence[App]) -> str:
     names = [f"{app.name} ({app.client})" if app.name != app.client else app.name for app in chosen]
     return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+def _runtime(paths: Paths) -> Runtime:
+    return Runtime(paths.helium, paths.helium_key)
 
 
 def _steam_root() -> Optional[Path]:
@@ -105,12 +112,22 @@ def steam_add(paths: Paths, chosen: Sequence[App], user: str = "all", restart: b
         return
     ui.log(f"Adding {_listing(chosen)} to your Steam library")
     names = steam.account_names(root)
+    layouts: Dict[str, Dict[str, str]] = {}
     with steamclient.closed(f"{paths.launcher} steam add", restart):
         for app in chosen:
             artwork = steam.collect_artwork(paths.artwork(app.id))
             logo = steam.LogoPosition.parse(app.logo_position)
             for result in steam.add_shortcut(root, accounts, _spec(paths, app), artwork, logo, rename=False):
                 ui.ok(_report(result, "added" if result.created else "updated", names))
+                if app.controller:
+                    if app.controller not in layouts:
+                        layouts[app.controller] = controllers.find_templates(root, app.controller)
+                    controllers.assign(root, result.account, result.name, layouts[app.controller])
+    for title, found in layouts.items():
+        if found:
+            ui.ok(f"Gave {_listing([app for app in chosen if app.controller == title])} Steam's {title} controller layout")
+        else:
+            ui.info(f"Steam's {title} controller layout was not found; pick a layout for these apps in Steam")
 
 
 def steam_remove(paths: Paths, chosen: Sequence[App], user: str = "all", restart: bool = True) -> None:
@@ -126,10 +143,25 @@ def steam_remove(paths: Paths, chosen: Sequence[App], user: str = "all", restart
         for app in present:
             for result in steam.remove_shortcut(root, accounts, str(paths.app_link(app.id))):
                 ui.ok(_report(result, "removed", names))
+                if app.controller:
+                    controllers.release(root, result.account, result.name)
+
+
+def _install_helium(paths: Paths, archive: Optional[str], verify: bool) -> None:
+    runtime = _runtime(paths)
+    current = runtime.current()
+    if current and not archive:
+        ui.ok(f"Helium {current} is installed")
+        return
+    ui.log("Installing Helium" + (f" from {archive}" if archive else " from GitHub"))
+    version = runtime.install(Path(archive) if archive else None, verify=verify)
+    ui.ok(f"Installed Helium {version}")
 
 
 def _install_app(paths: Paths, flatpak: Flatpak, record: Record, app: App, found: Optional[Installed]) -> None:
-    if found:
+    if app.browser:
+        record.add(app.id, installed_flatpak=False)
+    elif found:
         version = f" {found.version}" if found.version else ""
         ui.ok(f"{app.client}{version} is already installed ({found.installation} installation)")
         record.add(app.id, installed_flatpak=False)
@@ -142,7 +174,10 @@ def _install_app(paths: Paths, flatpak: Flatpak, record: Record, app: App, found
 
 
 def _purge(paths: Paths, app: App) -> None:
-    folders = app.profile.existing(app.home(paths.home)) if app.profile else []
+    if app.browser:
+        folders = [paths.profiles / app.id] if (paths.profiles / app.id).is_dir() else []
+    else:
+        folders = app.profile.existing(app.home(paths.home)) if app.profile else []
     for folder in folders:
         shutil.rmtree(folder)
     if folders:
@@ -179,8 +214,6 @@ def _summary(paths: Paths, managed: Sequence[App], separate: bool) -> None:
 
 def cmd_install(args, paths: Paths, flatpak: Flatpak) -> int:
     _refuse_root()
-    if not flatpak.available():
-        raise ui.Abort("flatpak is not installed; NonSteamApps installs every app from Flathub")
     if not _is_steamos():
         ui.warn("this does not look like SteamOS; continuing anyway")
     record = Record.load(paths.record)
@@ -194,6 +227,8 @@ def cmd_install(args, paths: Paths, flatpak: Flatpak) -> int:
     if old.present() and youtube not in chosen:
         chosen.insert(0, youtube)
         ui.info("SteamOS YT is installed, so its YouTube shortcut moves to VacuumTube")
+    if any(app.flatpak for app in chosen) and not flatpak.available():
+        raise ui.Abort(f"flatpak is not installed; NonSteamApps installs {_listing([a for a in chosen if a.flatpak])} from Flathub")
 
     ui.log(f"Installing NonSteamApps {__version__} into {paths.program}")
     paths.state.mkdir(parents=True, exist_ok=True)
@@ -205,7 +240,9 @@ def cmd_install(args, paths: Paths, flatpak: Flatpak) -> int:
         config.set_setting(paths.settings, PER_ACCOUNT, "0")
         ui.info("Kept SteamOS YT's choice of one sign-in shared by all Steam accounts")
 
-    installed = flatpak.installed()
+    if any(app.browser for app in chosen):
+        _install_helium(paths, args.helium_archive, not args.skip_verify)
+    installed = flatpak.installed() if any(app.flatpak for app in chosen) else {}
     for app in chosen:
         _install_app(paths, flatpak, record, app, installed.get(app.flatpak))
         record.save()
@@ -248,6 +285,9 @@ def cmd_remove(args, paths: Paths, flatpak: Flatpak) -> int:
     for app in chosen:
         record.discard(app.id)
     record.save()
+    if not args.keep_app and not any(app.browser for app in _managed(record)) and paths.helium.exists():
+        _runtime(paths).remove()
+        ui.ok("Removed Helium, which no other app uses")
     ui.ok(f"Removed {_listing(chosen)}")
     return 0
 
@@ -294,7 +334,9 @@ def cmd_launch(argv: Sequence[str], paths: Paths, flatpak: Flatpak) -> int:
     paths.state.mkdir(parents=True, exist_ok=True)
     if not verbose:
         _redirect(paths.log(app.id))
-    print(f"nonsteamapps {__version__}: starting {app.client} for {f'Steam account {account}' if account else 'all accounts'}")
+    print(f"nonsteamapps {__version__}: starting {_listing([app])} for {f'Steam account {account}' if account else 'all accounts'}")
+    if app.browser:
+        return _launch_helium(paths, app, account, extra)
     if account and app.profile:
         ready = app.profile.prepare(app.home(paths.home), account, lambda options: flatpak.run_quietly(app.flatpak, options))
         if not ready:
@@ -308,19 +350,53 @@ def cmd_launch(argv: Sequence[str], paths: Paths, flatpak: Flatpak) -> int:
     return EXIT_ERROR
 
 
+def _launch_helium(paths: Paths, app: App, account: Optional[int], extra: Sequence[str]) -> int:
+    runtime = _runtime(paths)
+    if not runtime.current():
+        raise ui.Abort(f"Helium is not installed; run: {paths.launcher} install {app.id}")
+    settings = config.read_settings(paths.settings)
+    game_mode = steamclient.in_game_mode()
+    profile = paths.profile(app.id, account)
+    browser.prepare(profile, config.enabled(settings.get(HELIUM_SERVICES), default=True), app.browser.kiosk, runtime.widevine)
+    factor = browser.scale(settings.get(HELIUM_SCALE, "auto"), game_mode)
+    command = [
+        str(runtime.executable),
+        *browser.flags(profile, app.browser.url, app.browser.kiosk, game_mode, factor, f"nonsteamapps-{app.id}"),
+        *extra,
+    ]
+    print(f"  Helium {runtime.current()}: " + " ".join(command), flush=True)
+    os.execv(command[0], command)
+    return EXIT_ERROR
+
+
 def cmd_update(args, paths: Paths, flatpak: Flatpak) -> int:
     record = Record.load(paths.record)
-    installed = flatpak.installed()
+    managed = _managed(record)
+    if any(app.browser for app in managed):
+        try:
+            version = _runtime(paths).update()
+        except (HeliumError, OSError) as exc:
+            ui.warn(f"could not update Helium: {exc}")
+        else:
+            ui.ok(f"Updated Helium to {version}" if version else "Helium is up to date")
+    installed = flatpak.installed() if any(app.flatpak for app in managed) else {}
     ours = [
-        app for app in _managed(record)
-        if record.owns_flatpak(app.id) and getattr(installed.get(app.flatpak), "installation", "") == "user"
+        app for app in managed
+        if app.flatpak and record.owns_flatpak(app.id) and getattr(installed.get(app.flatpak), "installation", "") == "user"
     ]
     if not ours:
-        ui.info("NonSteamApps installed no apps to update; Discover updates the rest")
+        if not any(app.browser for app in managed):
+            ui.info("NonSteamApps installed no apps to update; Discover updates the rest")
         return 0
     ui.log(f"Updating {_listing(ours)}")
     flatpak.update([app.flatpak for app in ours], quiet=ui.quiet)
     ui.ok("Apps are up to date")
+    return 0
+
+
+def cmd_rollback(args, paths: Paths, flatpak: Flatpak) -> int:
+    version = _runtime(paths).rollback()
+    ui.ok(f"Switched Helium back to {version}")
     return 0
 
 
@@ -348,7 +424,9 @@ def cmd_steam(args, paths: Paths, flatpak: Flatpak) -> int:
     return 0
 
 
-def _describe(app: App, record: Record, found: Optional[Installed]) -> str:
+def _describe(app: App, record: Record, found: Optional[Installed], helium: Optional[str] = None) -> str:
+    if app.browser:
+        return f"in Helium {helium}" if helium else "not installed"
     if found is None:
         return "not installed"
     version = f" {found.version}" if found.version else ""
@@ -359,8 +437,9 @@ def _describe(app: App, record: Record, found: Optional[Installed]) -> str:
 def cmd_list(args, paths: Paths, flatpak: Flatpak) -> int:
     record = Record.load(paths.record)
     installed = flatpak.installed() if flatpak.available() else {}
+    helium = _runtime(paths).current()
     for app in apps.APPS:
-        status = _describe(app, record, installed.get(app.flatpak))
+        status = _describe(app, record, installed.get(app.flatpak), helium if app.id in record.apps else None)
         managed = "in use" if app.id in record.apps else "available"
         print(f"{app.id:<10}{managed:<11}{status}")
         print(f"{'':<21}{app.summary}")
@@ -374,6 +453,18 @@ def _size(path: Path) -> str:
             return f"{total:.0f} {unit}" if unit == "B" else f"{total:.1f} {unit}"
         total /= 1024
     return ""
+
+
+def _helium_status(paths: Paths, settings: Dict[str, str]) -> str:
+    runtime = _runtime(paths)
+    current = runtime.current()
+    if not current:
+        return "not installed"
+    others = [version for version in runtime.versions() if version != current]
+    services = "on" if config.enabled(settings.get(HELIUM_SERVICES), default=True) else "off"
+    widevine = "downloaded" if any(runtime.widevine.glob("*/manifest.json")) else "not downloaded yet"
+    return (f"{current}" + (f" (also {', '.join(others)})" if others else "")
+            + f"; services {services}; Widevine {widevine}; scale {settings.get(HELIUM_SCALE) or 'auto'}")
 
 
 def cmd_doctor(args, paths: Paths, flatpak: Flatpak) -> int:
@@ -393,6 +484,7 @@ def cmd_doctor(args, paths: Paths, flatpak: Flatpak) -> int:
         ("Settings", f"{paths.settings} (sign-ins {'separate for each Steam account' if separate else 'shared'})"),
         ("Python", platform.python_version()),
         ("Flatpak", "available" if flatpak.available() else "not installed"),
+        ("Helium", _helium_status(paths, settings)),
         ("Updates", timer.status(paths)),
     ]
     root = _steam_root()
@@ -404,14 +496,19 @@ def cmd_doctor(args, paths: Paths, flatpak: Flatpak) -> int:
     accounts = steam.account_ids(root) if root else []
     names = steam.account_names(root) if root else {}
     print(ui.bold("Apps"))
+    helium = _runtime(paths).current()
     for app in apps.APPS:
-        if app.id not in record.apps and app.flatpak not in installed:
+        if app.id not in record.apps and (not app.flatpak or app.flatpak not in installed):
             continue
-        print(f"  {app.id:<10} {_describe(app, record, installed.get(app.flatpak))}")
+        print(f"  {app.id:<10} {_describe(app, record, installed.get(app.flatpak), helium)}")
         if root:
             for result in steam.shortcut_status(root, accounts, str(paths.app_link(app.id))):
                 print(f"  {'':<10} {_report(result, 'in the library as', names)}")
-        for folder in app.profile.existing(app.home(paths.home)) if app.profile else []:
+        if app.browser:
+            folders = sorted(path for path in (paths.profiles / app.id).glob("*") if path.is_dir())
+        else:
+            folders = app.profile.existing(app.home(paths.home)) if app.profile else []
+        for folder in folders:
             print(f"  {'':<10} data: {folder} ({_size(folder)})")
         log = paths.log(app.id)
         if log.is_file():
@@ -445,15 +542,28 @@ def cmd_uninstall(args, paths: Paths, flatpak: Flatpak) -> int:
     shutil.rmtree(paths.state, ignore_errors=True)
     if args.purge:
         shutil.rmtree(paths.config, ignore_errors=True)
-    shutil.rmtree(paths.program)
-    ui.ok("Removed NonSteamApps" + ("" if args.purge else f"; sign-ins stay in ~/.var/app and settings in {paths.config}"))
+        shutil.rmtree(paths.program)
+        ui.ok("Removed NonSteamApps")
+        return 0
+    for child in paths.program.iterdir():
+        if child == paths.profiles:
+            continue
+        if child.is_dir() and not child.is_symlink():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+    kept = f", {paths.profiles}" if paths.profiles.exists() else ""
+    if not any(paths.program.iterdir()):
+        paths.program.rmdir()
+    ui.ok(f"Removed NonSteamApps; sign-ins stay in ~/.var/app{kept} and settings in {paths.config}")
     return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=config.NAME,
-        description="Install apps from Flathub and add them to the Steam library, with separate sign-ins per Steam account.",
+        description="Install apps from Flathub, or in NonSteamApps' own Helium, and add them to the Steam library "
+                    "with separate sign-ins per Steam account.",
         epilog=f"Apps: {', '.join(apps.ids())}. Steam starts each one with: {config.NAME} launch APP [--steam-account ID] [-- ARGS]",
     )
     parser.add_argument("--version", action="version", version=f"{config.NAME} {__version__}")
@@ -473,6 +583,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--steam-user", default="all", help="Steam accounts that get shortcuts: all (default), auto or an account ID")
     sub.add_argument("--no-steam", dest="steam", action="store_false", help="do not change the Steam library")
     sub.add_argument("--no-auto-update", dest="auto_update", action="store_false", help="do not install the weekly update timer")
+    sub.add_argument("--helium-archive", metavar="FILE", help="install Helium from a release archive (its .asc signature beside it)")
+    sub.add_argument("--skip-verify", action="store_true", help="install Helium without checking its signature (not recommended)")
     restart(sub)
     common(sub)
     sub.set_defaults(func=cmd_install)
@@ -488,9 +600,13 @@ def build_parser() -> argparse.ArgumentParser:
     sub = commands.add_parser("list", help="show every app and whether it is installed")
     sub.set_defaults(func=cmd_list)
 
-    sub = commands.add_parser("update", help="update the apps NonSteamApps installed")
+    sub = commands.add_parser("update", help="update the apps NonSteamApps installed, including Helium")
     common(sub)
     sub.set_defaults(func=cmd_update)
+
+    sub = commands.add_parser("rollback", help="switch Helium back to the version installed before")
+    common(sub)
+    sub.set_defaults(func=cmd_rollback)
 
     sub = commands.add_parser("steam", help="add, remove or show Steam shortcuts (default: every app in use)")
     sub.add_argument("action", choices=("add", "remove", "status"))
@@ -528,7 +644,7 @@ def main(argv: Optional[Sequence[str]] = None, paths: Optional[Paths] = None, fl
         return args.func(args, paths, flatpak)
     except ui.Abort as exc:
         ui.error(str(exc))
-    except (steam.SteamError, FlatpakError, OSError) as exc:
+    except (steam.SteamError, FlatpakError, HeliumError, OSError) as exc:
         ui.error(str(exc))
     except KeyboardInterrupt:
         return EXIT_INTERRUPTED

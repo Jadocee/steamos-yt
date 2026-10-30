@@ -106,17 +106,33 @@ class JellyfinProfile:
 
 
 Profile = Union[FolderProfile, JellyfinProfile]
+WEB_BROWSER = "Web Browser"
+
+
+@dataclass(frozen=True)
+class Browser:
+    """An app that runs in NonSteamApps' own Helium: the browser itself, or one site full screen (kiosk)."""
+
+    url: str = ""
+    kiosk: bool = False
 
 
 @dataclass(frozen=True)
 class App:
+    """An app NonSteamApps installs: from Flathub (``flatpak``) or in its own Helium (``browser``).
+
+    ``controller`` names one of Valve's controller layouts to give the shortcut.
+    """
+
     id: str
     name: str
     client: str
-    flatpak: str
     summary: str
+    flatpak: str = ""
+    browser: Optional[Browser] = None
     args: Tuple[str, ...] = ()
     profile: Optional[Profile] = None
+    controller: str = ""
     logo_position: str = "BottomLeft:42:58"
     legacy_exes: Tuple[str, ...] = ()
 
@@ -152,6 +168,7 @@ APPS: Tuple[App, ...] = (
         flatpak="im.riot.Riot",
         summary="Secure chat on Matrix",
         args=("--password-store=basic", "--storage-mode=allow-plaintext"),
+        controller=WEB_BROWSER,
         profile=FolderProfile("config/Element-steam-{account}", "--profile=steam-{account}"),
         logo_position="BottomLeft:44:56",
     ),
@@ -171,6 +188,34 @@ APPS: Tuple[App, ...] = (
         client="LocalSend",
         flatpak="org.localsend.localsend_app",
         summary="Send files to and from nearby phones and computers over your own network",
+        controller=WEB_BROWSER,
+        logo_position="BottomLeft:44:56",
+    ),
+    App(
+        id="helium",
+        name="Helium",
+        client="Helium",
+        summary="A private, ad-blocking web browser, set up for a TV and a controller",
+        browser=Browser(),
+        controller=WEB_BROWSER,
+        logo_position="BottomLeft:44:56",
+    ),
+    App(
+        id="primevideo",
+        name="Prime Video",
+        client="Helium",
+        summary="Prime Video's films and series, full screen in Helium",
+        browser=Browser(url="https://www.primevideo.com/", kiosk=True),
+        controller=WEB_BROWSER,
+        logo_position="BottomLeft:44:56",
+    ),
+    App(
+        id="hbomax",
+        name="HBO Max",
+        client="Helium",
+        summary="HBO Max's series and films, full screen in Helium",
+        browser=Browser(url="https://www.hbomax.com/", kiosk=True),
+        controller=WEB_BROWSER,
         logo_position="BottomLeft:44:56",
     ),
 )

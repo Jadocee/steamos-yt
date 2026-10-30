@@ -57,6 +57,22 @@ class Paths:
     def record(self) -> Path:
         return self.state / "apps.json"
 
+    @property
+    def helium(self) -> Path:
+        return self.program / "helium"
+
+    @property
+    def helium_key(self) -> Path:
+        return self.program / "share" / "keys" / "helium.asc"
+
+    @property
+    def profiles(self) -> Path:
+        """Helium profiles, one folder per app; kept when NonSteamApps is uninstalled without --purge."""
+        return self.program / "profiles"
+
+    def profile(self, app_id: str, account: Optional[int]) -> Path:
+        return self.profiles / app_id / (str(account) if account else "shared")
+
     def app_link(self, app_id: str) -> Path:
         return self.program / "apps" / app_id
 

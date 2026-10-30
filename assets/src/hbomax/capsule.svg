@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="900" viewBox="0 0 600 900">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#17171D"/>
+      <stop offset="1" stop-color="#08080A"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="300" cy="330" r="380" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6B55FF" stop-opacity="0.45"/>
+      <stop offset="0.5" stop-color="#6B55FF" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#6B55FF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow2" cx="420" cy="560" r="320" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#B455FF" stop-opacity="0.16"/>
+      <stop offset="0.5" stop-color="#B455FF" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#B455FF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2A2A33"/>
+      <stop offset="1" stop-color="#18181E"/>
+    </linearGradient>
+    <linearGradient id="p0" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3B2A5C"/><stop offset="1" stop-color="#1C1530"/></linearGradient>
+    <linearGradient id="p1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1F3A4D"/><stop offset="1" stop-color="#10202B"/></linearGradient>
+    <linearGradient id="p2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4A2F22"/><stop offset="1" stop-color="#22150F"/></linearGradient>
+    <linearGradient id="p3" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#23402E"/><stop offset="1" stop-color="#102118"/></linearGradient>
+    <linearGradient id="p4" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2E2A4F"/><stop offset="1" stop-color="#161427"/></linearGradient>
+    <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#08080A" stop-opacity="0"/>
+      <stop offset="1" stop-color="#08080A" stop-opacity="1"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8B7BFF"/>
+      <stop offset="1" stop-color="#3A22B8"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="0.55" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+    <symbol id="emblem" viewBox="0 0 240 204">
+      <rect x="0" y="0" width="240" height="168" rx="46" fill="url(#screen)"/>
+      <rect x="0" y="0" width="240" height="168" rx="46" fill="url(#gloss)"/>
+      <path d="M112 38 C116 70 126 80 158 84 C126 88 116 98 112 130 C108 98 98 88 66 84 C98 80 108 70 112 38 Z" fill="#FFFFFF"/>
+      <path d="M160 40 C161.5 52 165 55.5 177 57 C165 58.5 161.5 62 160 74 C158.5 62 155 58.5 143 57 C155 55.5 158.5 52 160 40 Z" fill="#FFFFFF"/>
+      <rect x="76" y="182" width="88" height="16" rx="8" fill="#8B7BFF"/>
+    </symbol>
+  </defs>
+  <rect width="600" height="900" fill="url(#bg)"/>
+  <rect width="600" height="900" fill="url(#glow)"/>
+  <rect width="600" height="900" fill="url(#glow2)"/>
+  <g>
+    <rect x="-60" y="704" width="176" height="99" rx="14" fill="url(#tile)"/>
+    <rect x="-46" y="787" width="117" height="5" rx="2.5" fill="#B455FF"/>
+    <rect x="136" y="704" width="176" height="99" rx="14" fill="url(#tile)"/>
+    <rect x="150" y="787" width="63" height="5" rx="2.5" fill="#B455FF"/>
+    <rect x="332" y="704" width="176" height="99" rx="14" fill="url(#tile)"/>
+    <rect x="346" y="787" width="93" height="5" rx="2.5" fill="#B455FF"/>
+    <rect x="528" y="704" width="176" height="99" rx="14" fill="url(#tile)"/>
+    <rect x="542" y="787" width="58" height="5" rx="2.5" fill="#B455FF"/>
+    <rect x="-158" y="824" width="176" height="99" rx="14" fill="url(#tile)"/>
+    <rect x="38" y="824" width="176" height="99" rx="14" fill="url(#tile)"/>
+    <rect x="52" y="907" width="117" height="5" rx="2.5" fill="#B455FF"/>
+    <rect x="234" y="824" width="176" height="99" rx="14" fill="url(#tile)"/>
+    <rect x="248" y="907" width="105" height="5" rx="2.5" fill="#B455FF"/>
+    <rect x="430" y="824" width="176" height="99" rx="14" fill="url(#tile)"/>
+    <rect x="444" y="907" width="90" height="5" rx="2.5" fill="#B455FF"/>
+    <rect x="626" y="824" width="176" height="99" rx="14" fill="url(#tile)"/>
+  </g>
+  <rect y="640" width="600" height="260" fill="url(#fade)"/>
+  <use href="#emblem" x="170" y="190" width="260" height="221" filter="url(#shadow)"/>
+  <text x="300" y="560" text-anchor="middle" font-family="Inter Display" font-weight="900" font-size="105.3" letter-spacing="-3.8" fill="#FFFFFF">HBO Max</text>
+  <text x="306" y="622" text-anchor="middle" font-family="Inter" font-weight="600" font-size="28" letter-spacing="12" fill="#B8B8C4">PREMIUM TV</text>
+</svg>

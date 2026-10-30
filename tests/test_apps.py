@@ -11,7 +11,7 @@ HOME = Path("/home/deck")
 
 class RegistryTests(unittest.TestCase):
     def test_ids_and_lookup(self):
-        self.assertEqual(apps.ids(), ["youtube", "element", "jellyfin"])
+        self.assertEqual(apps.ids(), ["youtube", "element", "jellyfin", "localsend"])
         self.assertEqual(apps.by_id(" YouTube ").flatpak, "rocks.shy.VacuumTube")
         with self.assertRaises(KeyError):
             apps.by_id("netflix")
@@ -37,6 +37,11 @@ class ArgumentTests(unittest.TestCase):
             apps.by_id("element").arguments(HOME, 222),
             ["--password-store=basic", "--storage-mode=allow-plaintext", "--profile=steam-222"],
         )
+
+    def test_localsend_has_no_sign_in_so_every_account_shares_its_settings(self):
+        localsend = apps.by_id("localsend")
+        self.assertIsNone(localsend.profile)
+        self.assertEqual(localsend.arguments(HOME, 111), [])
 
     def test_jellyfin_starts_in_its_tv_layout_with_a_named_profile(self):
         self.assertEqual(apps.by_id("jellyfin").arguments(HOME, 333), ["--tv", "--fullscreen", "--profile=steam-333"])

@@ -7,12 +7,13 @@ Living-room apps for SteamOS, installed from Flathub and added to the Steam libr
 | **YouTube** | [VacuumTube](https://github.com/shy1132/VacuumTube) | `rocks.shy.VacuumTube` | YouTube's TV interface, with controller support, ad blocking and casting from the YouTube phone app. NonSteamApps turns on SponsorBlock, DeArrow and dislike counts. |
 | **Element** | [Element Desktop](https://element.io) | `im.riot.Riot` | Matrix chat. A desktop interface: use the touchscreen, the trackpads or a keyboard. |
 | **Jellyfin** | [Jellyfin Desktop](https://github.com/jellyfin/jellyfin-desktop) | `org.jellyfin.JellyfinDesktop` | Your Jellyfin server in its TV layout, with controller support. It plays more formats without the server converting them. |
+| **LocalSend** | [LocalSend](https://localsend.org) | `org.localsend.localsend_app` | Send files to and from nearby phones and computers over your own network, with no account and no internet needed. Received files go to `~/Downloads`. |
 
 ## Features
 
 - **No root, nothing lost on updates.** Apps install into your user Flatpak installation, which SteamOS updates leave alone. An app you already installed, for example through Discover, is used as it is and never uninstalled.
 - **Every Steam account.** Each account on the device gets a shortcut, with artwork for the library, the capsule, the hero banner, the logo and the icon. The Steam overlay is off.
-- **Separate sign-ins.** Each Steam account has its own YouTube, Element and Jellyfin data (see [Several Steam accounts](#several-steam-accounts)).
+- **Separate sign-ins.** Each Steam account has its own YouTube, Element and Jellyfin data (see [Several Steam accounts](#several-steam-accounts)). LocalSend has no sign-in, so its settings are shared.
 - **Updates.** A weekly timer updates the apps NonSteamApps installed.
 - **Replaces SteamOS YT.** On a device with this project's earlier YouTube kiosk, its YouTube shortcut moves to VacuumTube and keeps its place in the library (see [Moving from SteamOS YT](#moving-from-steamos-yt)).
 
@@ -30,7 +31,7 @@ In Desktop Mode, open Konsole and run:
 curl -fsSL https://raw.githubusercontent.com/jadocee/steamos-yt/main/install.sh | bash
 ```
 
-This installs all three apps. To choose, name them:
+This installs all four apps. To choose, name them:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jadocee/steamos-yt/main/install.sh | bash -s -- youtube jellyfin
@@ -53,6 +54,10 @@ Open them from **Library → Non-Steam** in Game Mode or in the Steam client in 
 - **YouTube:** controllers work out of the box. Press `Ctrl+O`, or open YouTube's settings, for VacuumTube's settings: ad blocking, SponsorBlock categories, DeArrow, dislikes, hiding Shorts, codec filters and more. To cast from a phone, choose the device in the YouTube app on the same network.
 - **Element:** Element has no controller navigation. Use the touchscreen, or pick a mouse-and-keyboard layout in its controller settings (the controller icon on its library page); **Steam + X** opens the on-screen keyboard.
 - **Jellyfin:** starts in its TV layout. Add your server and sign in once for each Steam account.
+- **LocalSend:** devices on the same network find each other while LocalSend is open on both.
+  - **Receiving:** accept a transfer and the files land in `~/Downloads`.
+  - **Sending:** you pick files through the system file chooser. If it does not open in Game Mode, send from Desktop Mode.
+  - **Controls:** use the touchscreen or the trackpads.
 
 ### On a TV: use its full resolution
 
@@ -67,6 +72,7 @@ Each Steam account's shortcut starts the app with `--steam-account <ID>`. NonSte
 | YouTube | `~/.var/app/rocks.shy.VacuumTube/config/VacuumTube-steam-<ID>` |
 | Element | `~/.var/app/im.riot.Riot/config/Element-steam-<ID>` |
 | Jellyfin | A Jellyfin Desktop profile named `steam-<ID>`, created on first launch |
+| LocalSend | Shared by every account: it has no sign-in, and received files go to `~/Downloads` |
 
 Started from the applications menu, VacuumTube and Element use their usual data instead, and Jellyfin uses its default profile. To give every account the same data, set `PROFILE_PER_STEAM_ACCOUNT=0` in `~/.config/nonsteamapps/nonsteamapps.conf`.
 
@@ -169,6 +175,7 @@ To add an app:
 - [VacuumTube](https://github.com/shy1132/VacuumTube) by shy1132 and contributors, which brings YouTube's TV interface to the desktop.
 - [Element](https://github.com/element-hq/element-web), and the maintainers of its [Flathub package](https://github.com/flathub/im.riot.Riot).
 - [Jellyfin Desktop](https://github.com/jellyfin/jellyfin-desktop) by the Jellyfin project.
+- [LocalSend](https://github.com/localsend/localsend) by Tien Do Nam and contributors.
 - [Steam ROM Manager](https://github.com/SteamGridDB/steam-rom-manager): reference for Steam's shortcut, artwork and controller conventions.
 
-NonSteamApps is not affiliated with Valve, Google, Element, the Matrix.org Foundation or the Jellyfin project. YouTube is a trademark of Google LLC; Steam and SteamOS are trademarks of Valve Corporation; other names belong to their owners. The artwork in this repository is original.
+NonSteamApps is not affiliated with Valve, Google, Element, the Matrix.org Foundation, the Jellyfin project or LocalSend. YouTube is a trademark of Google LLC; Steam and SteamOS are trademarks of Valve Corporation; other names belong to their owners. The artwork in this repository is original.

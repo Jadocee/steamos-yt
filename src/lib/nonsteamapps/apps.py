@@ -165,6 +165,14 @@ APPS: Tuple[App, ...] = (
         profile=JellyfinProfile(),
         logo_position="BottomLeft:44:56",
     ),
+    App(
+        id="localsend",
+        name="LocalSend",
+        client="LocalSend",
+        flatpak="org.localsend.localsend_app",
+        summary="Send files to and from nearby phones and computers over your own network",
+        logo_position="BottomLeft:44:56",
+    ),
 )
 
 

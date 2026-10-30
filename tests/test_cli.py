@@ -70,14 +70,14 @@ class InstallTests(CliTestCase):
         self.install()
         self.assertEqual(
             [call[-1] for call in self.fake.calls("install")],
-            ["rocks.shy.VacuumTube", "im.riot.Riot", "org.jellyfin.JellyfinDesktop"],
+            ["rocks.shy.VacuumTube", "im.riot.Riot", "org.jellyfin.JellyfinDesktop", "org.localsend.localsend_app"],
         )
         record = config.Record.load(self.paths.record)
         self.assertEqual(record.managed(), apps.ids())
         self.assertTrue(all(record.owns_flatpak(app_id) for app_id in apps.ids()))
         for account in (ALPHA, BETA):
             entries = self.entries(account)
-            self.assertEqual(sorted(entries), ["Element", "Jellyfin", "YouTube"])
+            self.assertEqual(sorted(entries), ["Element", "Jellyfin", "LocalSend", "YouTube"])
             for app in apps.APPS:
                 entry = entries[app.name]
                 self.assertEqual(entry.get("Exe"), f'"{self.paths.app_link(app.id)}"')
@@ -192,6 +192,12 @@ class LaunchTests(CliTestCase):
         with mock.patch.dict(os.environ, {"FAKE_FLATPAK_FAIL": "run"}):
             argv, _ = self.launch("jellyfin", "--steam-account", str(ALPHA))
         self.assertEqual(argv[3:], ["--tv", "--fullscreen"])
+
+    def test_localsend_starts_with_its_own_settings_for_every_account(self):
+        argv, redirect = self.launch("localsend", "--steam-account", str(BETA))
+        self.assertEqual(argv, [self.fake.command, "run", "org.localsend.localsend_app"])
+        self.assertFalse((self.home / ".var").exists())
+        redirect.assert_called_once_with(self.paths.log("localsend"))
 
     def test_unknown_or_missing_app(self):
         self.assertEqual(self.run_cli("launch", "netflix"), 1)

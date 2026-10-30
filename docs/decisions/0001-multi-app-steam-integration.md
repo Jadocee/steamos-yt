@@ -148,6 +148,8 @@ The owner answered the open questions. Where these answers differ from the text 
    - Element: `--profile`;
    - Jellyfin: a named profile, created before `--profile` selects it.
 
+7. **LocalSend (added at the owner's request).** It comes from Flathub as `org.localsend.localsend_app`. It has no sign-in, so it has no per-account data: every Steam account shares its settings, and received files go to `~/Downloads`, the one folder its Flatpak may write.
+
 Still open: Steam Input layouts for each app, and Maximum Game Resolution (migration phase 4).
 
 ## Sources

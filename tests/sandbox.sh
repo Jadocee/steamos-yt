@@ -52,9 +52,9 @@ run "$ROOT/install.sh" --yes --no-auto-update >"$WORK/install.log" 2>&1 || {
     cat "$WORK/install.log"
     exit 1
 }
-check "every app has a link to the launcher" test -L "$PROGRAM/apps/youtube" -a -L "$PROGRAM/apps/element" -a -L "$PROGRAM/apps/jellyfin"
-check "both accounts list all three apps" test "$(shortcut_names 111)|$(shortcut_names 222)" == "Element Jellyfin YouTube|Element Jellyfin YouTube"
-check "the artwork was copied" test "$(find "$STEAM/userdata/222/config/grid" -name '*_hero.jpg' | wc -l)" -eq 3
+check "every app has a link to the launcher" test -L "$PROGRAM/apps/youtube" -a -L "$PROGRAM/apps/element" -a -L "$PROGRAM/apps/jellyfin" -a -L "$PROGRAM/apps/localsend"
+check "both accounts list every app" test "$(shortcut_names 111)|$(shortcut_names 222)" == "Element Jellyfin LocalSend YouTube|Element Jellyfin LocalSend YouTube"
+check "the artwork was copied" test "$(find "$STEAM/userdata/222/config/grid" -name '*_hero.jpg' | wc -l)" -eq 4
 
 echo "==> launch through the link Steam runs"
 : >"$WORK/flatpak.log"

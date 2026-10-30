@@ -145,6 +145,7 @@ class PageSettings:
     dearrow: bool = True
     dearrow_thumbnails: bool = True
     return_dislikes: bool = True
+    block_ads: bool = True
     block_other_sites: bool = True
     allowed_sites: List[str] = field(default_factory=list)
 
@@ -313,6 +314,7 @@ def page_config(identity: Optional[Identity], settings: PageSettings, target_url
         "deArrow": bool(settings.dearrow),
         "deArrowThumbnails": bool(settings.dearrow and settings.dearrow_thumbnails),
         "returnDislikes": bool(settings.return_dislikes),
+        "blockAds": bool(settings.block_ads),
         "blockOtherSites": bool(settings.block_other_sites),
         "allowedSites": allowed_sites(settings, target_url),
         "headerRules": bool(client_hint_rules(identity)),

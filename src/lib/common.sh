@@ -1,7 +1,7 @@
 # shellcheck shell=bash disable=SC2034
 # Shared helpers for steamos-yt. Sourced by bin/steamos-yt and install.sh.
 
-STEAMOS_YT_VERSION="1.3.0"
+STEAMOS_YT_VERSION="1.4.0"
 STEAMOS_YT_REPO="${STEAMOS_YT_REPO:-jadocee/steamos-yt}"
 HELIUM_REPO="imputnet/helium-linux"
 HELIUM_KEY_FINGERPRINT="BE677C1989D35EAB2C5F26C9351601AD01D6378E"

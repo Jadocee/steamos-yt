@@ -76,6 +76,7 @@ load_config() {
     YT_DEARROW="1"
     YT_DEARROW_THUMBNAILS="1"
     YT_RETURN_DISLIKES="1"
+    YT_BLOCK_ADS="1"
     YT_PROFILE_PER_STEAM_ACCOUNT="1"
     YT_BLOCK_OTHER_SITES="1"
     YT_ALLOWED_SITES=""
@@ -120,7 +121,7 @@ read_config() {
             YT_URL | YT_IDENTITY | YT_USER_AGENT | YT_CONTROLLER | YT_EXIT_COMBO | YT_CURSOR_HIDE_SECONDS | \
                 YT_MAX_RESOLUTION | YT_BLOCK_CODECS | YT_OZONE_PLATFORM | YT_KIOSK | YT_LANG | YT_KEEP_STEAM_ENV | \
                 YT_SPONSORBLOCK | YT_SPONSORBLOCK_CATEGORIES | YT_DEARROW | YT_DEARROW_THUMBNAILS | YT_RETURN_DISLIKES | \
-                YT_PROFILE_PER_STEAM_ACCOUNT | YT_BLOCK_OTHER_SITES | YT_ALLOWED_SITES | YT_WINDOW)
+                YT_BLOCK_ADS | YT_PROFILE_PER_STEAM_ACCOUNT | YT_BLOCK_OTHER_SITES | YT_ALLOWED_SITES | YT_WINDOW)
                 printf -v "$key" '%s' "$value"
                 ;;
             *) warn "ignoring unknown setting $key in $file" ;;
@@ -144,6 +145,7 @@ prepare_args() {
         --dearrow "$YT_DEARROW"
         --dearrow-thumbnails "$YT_DEARROW_THUMBNAILS"
         --return-dislikes "$YT_RETURN_DISLIKES"
+        --block-ads "$YT_BLOCK_ADS"
         --block-other-sites "$YT_BLOCK_OTHER_SITES"
         --allowed-sites "$YT_ALLOWED_SITES"
         --extension "$APP_HOME/extension"
@@ -493,8 +495,8 @@ addon_summary() {
     elif [[ $(on_off "$YT_DEARROW") == on ]]; then
         thumbnails=" (titles only)"
     fi
-    printf 'SponsorBlock %s (%s) · DeArrow %s%s · Return YouTube Dislike %s' \
-        "$(on_off "$YT_SPONSORBLOCK")" "${YT_SPONSORBLOCK_CATEGORIES:-none}" \
+    printf 'Ad blocking %s · SponsorBlock %s (%s) · DeArrow %s%s · Return YouTube Dislike %s' \
+        "$(on_off "$YT_BLOCK_ADS")" "$(on_off "$YT_SPONSORBLOCK")" "${YT_SPONSORBLOCK_CATEGORIES:-none}" \
         "$(on_off "$YT_DEARROW")" "$thumbnails" "$(on_off "$YT_RETURN_DISLIKES")"
 }
 

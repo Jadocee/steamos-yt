@@ -102,6 +102,7 @@ run_scenario() {
     case $scenario in
         titles-only) echo "YT_DEARROW_THUMBNAILS=0" >>"$CONFIG" ;;
         combo) echo "YT_WINDOW=app" >>"$CONFIG" ;;
+        close) echo "YT_BLOCK_ADS=0" >>"$CONFIG" ;;
         site-lock)
             report=lock.json
             query+="&lock=1"

@@ -145,6 +145,7 @@ def _page_settings(args) -> identity.PageSettings:
         dearrow=_flag(args.dearrow),
         dearrow_thumbnails=_flag(args.dearrow_thumbnails),
         return_dislikes=_flag(args.return_dislikes),
+        block_ads=_flag(args.block_ads),
         block_other_sites=_flag(args.block_other_sites),
     )
     try:
@@ -311,6 +312,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--dearrow", default="1")
     sub.add_argument("--dearrow-thumbnails", default="1")
     sub.add_argument("--return-dislikes", default="1")
+    sub.add_argument("--block-ads", default="1", help="remove ads from YouTube's responses")
     sub.add_argument("--block-other-sites", default="1", help="only let YouTube and its sign-in pages open")
     sub.add_argument("--allowed-sites", default="", help="further domains the kiosk may open")
     sub.set_defaults(func=cmd_launch_prepare)

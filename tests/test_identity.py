@@ -110,6 +110,7 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual(config["sponsorBlockCategories"], ["sponsor", "selfpromo", "interaction"])
         self.assertTrue(config["deArrow"])
         self.assertTrue(config["returnDislikes"])
+        self.assertTrue(config["blockAds"])
 
     def test_write_extension_config(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -193,7 +194,7 @@ class LaunchPrepareTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             status, _, err = self.run_cli(
                 "launch-prepare", "--extension", tmp, "--sponsorblock", "0", "--dearrow", "no",
-                "--return-dislikes", "off", "--sponsorblock-categories", "Sponsor, intro bogus",
+                "--return-dislikes", "off", "--block-ads", "false", "--sponsorblock-categories", "Sponsor, intro bogus",
             )
             self.assertEqual(status, 0)
             self.assertIn("unknown SponsorBlock category bogus", err)
@@ -203,6 +204,7 @@ class LaunchPrepareTests(unittest.TestCase):
                 (config["sponsorBlock"], config["deArrow"], config["returnDislikes"], config["sponsorBlockCategories"]),
                 (False, False, False, ["sponsor", "intro"]),
             )
+            self.assertFalse(config["blockAds"])
 
     def test_site_lock_switches(self):
         with tempfile.TemporaryDirectory() as tmp:

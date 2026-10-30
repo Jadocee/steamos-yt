@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "SteamOS YT Companion",
   "short_name": "SteamOS YT",
-  "version": "1.3.0",
-  "description": "Controller, exit, device identity, site lock, SponsorBlock, DeArrow and Return YouTube Dislike for YouTube on TV inside the SteamOS kiosk.",
+  "version": "1.4.0",
+  "description": "Controller, exit, device identity, site lock, ad blocking, SponsorBlock, DeArrow and Return YouTube Dislike for YouTube on TV inside the SteamOS kiosk.",
   "minimum_chrome_version": "111",
   "background": {
     "service_worker": "background.js"
@@ -52,6 +52,7 @@
       ],
       "js": [
         "config.js",
+        "ads.js",
         "page.js",
         "services.js"
       ],

@@ -6,7 +6,7 @@ import re
 import sys
 from pathlib import Path
 
-from server import BLOCKED_HOST, BROKEN, DOWNVOTED, ORIGINAL, RUNS, SKIPPED
+from server import BLOCKED_HOST, BROKEN, DOWNVOTED, ORIGINAL, PLAYER_ADS, RUNS, SKIPPED
 
 STARBOARD = 0x8000
 DOWN, UP = STARBOARD + 13, STARBOARD + 12
@@ -60,6 +60,19 @@ def main() -> int:
     downs = [event for event in report["holdDown"] if event == ["down", DOWN]]
     expect(len(downs) >= 3 and report["holdDown"][-1] == ["up", DOWN], f"held D-pad should repeat: {report['holdDown']}")
     expect(report["stickUp"] == [["down", STICK_UP], ["up", STICK_UP]], f"left stick up: {report['stickUp']}")
+
+    ads = report["ads"]
+    if scenario == "close":
+        expect(ads["sections"] == ["tvMastheadRenderer", "adSlotRenderer", "promoShelfRenderer", "shelfRenderer"],
+               f"with ad blocking off, the home page must keep its ads: {ads['sections']}")
+        expect("adSlotRenderer" in ads["shelfItems"], f"with ad blocking off, the shelf must keep its ad: {ads['shelfItems']}")
+        expect(ads["player"] == ads["fetchedPlayer"] == list(PLAYER_ADS), f"with ad blocking off, video ads must stay: {ads}")
+    else:
+        expect(ads["sections"] == ["shelfRenderer"], f"masthead, ad and promoted sections must go: {ads['sections']}")
+        expect(set(ads["shelfItems"]) == {"tileRenderer"}, f"sponsored tiles must go: {ads['shelfItems']}")
+        expect(ads["player"] == [], f"video ads must go from player responses read with JSON.parse: {ads['player']}")
+        expect(ads["fetchedPlayer"] == [], f"video ads must go from player responses read with fetch: {ads['fetchedPlayer']}")
+        expect(ads["shorts"] == ["video"], f"ads among Shorts must go: {ads['shorts']}")
 
     tiles = {tile["id"]: tile for tile in report["deArrow"]}
     expect(tiles[SKIPPED]["title"] == "An Honest Title", f"DeArrow title: {tiles[SKIPPED]['title']}")

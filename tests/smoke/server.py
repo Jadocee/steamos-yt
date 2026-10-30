@@ -60,7 +60,11 @@ def tile(video_id, title, runs=False):
     }
 
 
+AD_SLOT = {"adSlotRenderer": {"adSlotMetadata": {"slotId": "ad"}, "fulfillmentContent": {"fulfilledLayout": {}}}}
+PLAYER_ADS = ("adPlacements", "adSlots", "playerAds")
+
 BROWSE = {
+    "responseContext": {},
     "contents": {
         "tvBrowseRenderer": {
             "content": {
@@ -68,12 +72,16 @@ BROWSE = {
                     "content": {
                         "sectionListRenderer": {
                             "contents": [
+                                {"tvMastheadRenderer": {"title": {"simpleText": "Sponsored masthead"}}},
+                                AD_SLOT,
+                                {"promoShelfRenderer": {"title": {"simpleText": "Promoted"}}},
                                 {
                                     "shelfRenderer": {
                                         "content": {
                                             "horizontalListRenderer": {
                                                 "items": [
                                                     tile(SKIPPED, "YOU WON'T BELIEVE THIS"),
+                                                    AD_SLOT,
                                                     tile(ORIGINAL, "Original title stays"),
                                                     tile(DOWNVOTED, "Downvoted stays"),
                                                     tile(RUNS, "RUNS TITLE", runs=True),
@@ -93,6 +101,7 @@ BROWSE = {
 }
 
 NEXT = {
+    "responseContext": {},
     "currentVideoEndpoint": {"watchEndpoint": {"videoId": SKIPPED}},
     "transportControls": {
         "transportControlsRenderer": {
@@ -123,6 +132,23 @@ NEXT = {
                 },
             }
         }
+    ],
+}
+
+PLAYER = {
+    "responseContext": {},
+    "playabilityStatus": {"status": "OK"},
+    "videoDetails": {"videoId": SKIPPED},
+    "adPlacements": [{"adPlacementRenderer": {"config": {"adPlacementConfig": {"kind": "AD_PLACEMENT_KIND_START"}}}}],
+    "adSlots": [AD_SLOT],
+    "playerAds": [{"playerLegacyDesktopWatchAdsRenderer": {}}],
+}
+
+REELS = {
+    "responseContext": {},
+    "entries": [
+        {"command": {"reelWatchEndpoint": {"videoId": RUNS}}},
+        {"command": {"reelWatchEndpoint": {"adClientParams": {"isAd": True}}}},
     ],
 }
 
@@ -266,8 +292,19 @@ if (params.get('lock') === '1') {
     xhr.send('{}');
   });
   const browse = await xhrJson('/youtubei/v1/browse?prettyPrint=false', 'listener');
-  const tiles = browse.contents.tvBrowseRenderer.content.tvSurfaceContentRenderer.content.sectionListRenderer.contents[0]
-    .shelfRenderer.content.horizontalListRenderer.items.map((item) => item.tileRenderer);
+  const sections = browse.contents.tvBrowseRenderer.content.tvSurfaceContentRenderer.content.sectionListRenderer.contents;
+  const shelfItems = sections.find((section) => section.shelfRenderer).shelfRenderer.content.horizontalListRenderer.items;
+  const tiles = shelfItems.filter((item) => item.tileRenderer).map((item) => item.tileRenderer);
+  const player = await xhrJson('/youtubei/v1/player', 'listener');
+  const fetchedPlayer = await (await fetch('/youtubei/v1/player', { method: 'POST', body: '{}' })).json();
+  const reels = await xhrJson('/youtubei/v1/reel/reel_watch_sequence', 'property');
+  result.ads = {
+    sections: sections.map((section) => Object.keys(section)[0]),
+    shelfItems: shelfItems.map((item) => Object.keys(item)[0]),
+    player: __PLAYER_ADS__.filter((key) => key in player),
+    fetchedPlayer: __PLAYER_ADS__.filter((key) => key in fetchedPlayer),
+    shorts: reels.entries.map((entry) => (entry.command.reelWatchEndpoint.adClientParams?.isAd ? 'ad' : 'video')),
+  };
   result.deArrow = tiles.map((tile) => ({
     id: tile.contentId,
     title: tile.metadata.tileMetadataRenderer.title.simpleText ?? tile.metadata.tileMetadataRenderer.title.runs.map((run) => run.text).join(''),
@@ -359,7 +396,7 @@ if (params.get('lock') === '1') {
 })().catch((error) => fetch('/report-error', { method: 'POST', body: String(error && error.stack || error) }));
 </script>
 </body></html>
-""".replace("__SKIPPED__", SKIPPED).replace("__ORIGINAL__", ORIGINAL)
+""".replace("__SKIPPED__", SKIPPED).replace("__ORIGINAL__", ORIGINAL).replace("__PLAYER_ADS__", json.dumps(PLAYER_ADS))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -437,6 +474,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(BROWSE)
         if path == "/youtubei/v1/next":
             return self._json(NEXT)
+        if path == "/youtubei/v1/player":
+            return self._json(PLAYER)
+        if path == "/youtubei/v1/reel/reel_watch_sequence":
+            return self._json(REELS)
         if path == "/headers":
             return self._json(self._headers())
         names = {"/report": "report.json", "/report-hook": "hook.json", "/report-lock": "lock.json", "/report-error": "error.txt"}

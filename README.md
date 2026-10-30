@@ -13,6 +13,7 @@ YouTube's TV interface on SteamOS, running in [Helium](https://helium.computer) 
 - **A sign-in per Steam account**: each Steam account gets its own browser profile, so YouTube sign-ins, cookies and watch history follow whoever is signed in to Steam.
 - **Controller support**: a bundled companion extension translates the Steam Deck's controls (or any gamepad) into the key codes YouTube's console apps receive.
 - **SponsorBlock, DeArrow and Return YouTube Dislike**: built into the companion extension for the TV interface and on by default. Sponsored segments are skipped with an on-screen notice and marked on the progress bar, clickbait titles and thumbnails are replaced, and dislike counts return. YouTube's page security policy stays intact.
+- **No ads**: the home page's masthead ad, sponsored tiles, promoted shelves, ads among Shorts and the ads that play before and during videos are removed.
 - **YouTube only**: pages from other sites never open in the kiosk; pop-ups, new tabs and browser pages close or lead back to YouTube.
 - **Clean exits**: choosing *Exit* inside YouTube, holding **View + Menu**, or *Exit game* from Steam returns you to the library.
 - **Kiosk profiles**: dedicated Helium profiles with no first-run pages, prompts, restore bubbles or dialogs a controller cannot answer, VA-API hardware video decoding, autoplay enabled, and Helium's built-in uBlock Origin.
@@ -98,6 +99,17 @@ YouTube's TV page only allows images from Google's servers, and paints each thum
 
 SponsorBlock and DeArrow data comes from the SponsorBlock project under [CC BY-NC-SA 4.0](https://github.com/ajayyy/SponsorBlock/wiki/Database-and-API-License); dislike counts come from the [Return YouTube Dislike](https://returnyoutubedislike.com) API. DeArrow's official extension is a paid product with a free trial. If DeArrow improves your viewing, consider [buying a licence](https://dearrow.ajay.app/payment) to support it.
 
+## No ads
+
+The companion extension removes YouTube's ads before the TV interface sees them:
+
+- the full-width masthead ad at the top of the home page;
+- sponsored tiles in the home feed, search results and suggestions, and promoted shelves;
+- ads among Shorts;
+- the ad schedule each video comes with, so no ads play before or during it.
+
+It does this by cleaning the data YouTube's TV interface receives (innertube responses), removing the same structures as the webOS, Tizen and VacuumTube clients for YouTube on TV. Helium's built-in uBlock Origin is written mainly for the desktop site and misses most of the TV interface's ad formats. Set `YT_BLOCK_ADS=0` to see ads again, for example to support creators through ad revenue.
+
 ## YouTube only
 
 The kiosk opens YouTube and nothing else. Allowed are `youtube.com` and its subdomains (including YouTube Music and the consent pages), `youtu.be`, `youtube-nocookie.com`, `youtubekids.com`, Google's sign-in, consent and policy pages, Google's "unusual traffic" check, and the site of `YT_URL`.
@@ -127,6 +139,7 @@ Settings live in `~/.config/steamos-yt/` and apply the next time YouTube starts.
 | `YT_DEARROW` | `1` | DeArrow titles and thumbnails |
 | `YT_DEARROW_THUMBNAILS` | `1` | `0` limits DeArrow to titles |
 | `YT_RETURN_DISLIKES` | `1` | Show dislike counts |
+| `YT_BLOCK_ADS` | `1` | Remove the masthead ad, sponsored tiles, promoted shelves, Shorts ads and video ads |
 | `YT_BLOCK_OTHER_SITES` | `1` | Open YouTube and its sign-in pages only (`0` allows any site) |
 | `YT_ALLOWED_SITES` | empty | Further domains the kiosk may open, comma-separated |
 | `YT_PROFILE_PER_STEAM_ACCOUNT` | `1` | Separate sign-in, cookies and history for each Steam account (`0` shares one profile) |
@@ -177,7 +190,7 @@ flowchart LR
   Launcher -->|"kiosk flags, the account's profile, TV user agent"| Helium["Helium"]
   Helium --> Splash["Boot screen"]
   Splash -->|"identity rules live"| TV["youtube.com/tv"]
-  Extension["Companion extension"] -.->|"Client Hints, gamepad → Starboard keys, media checks, exit, site lock, SponsorBlock, DeArrow, dislikes"| TV
+  Extension["Companion extension"] -.->|"Client Hints, gamepad → Starboard keys, media checks, exit, site lock, ad removal, SponsorBlock, DeArrow, dislikes"| TV
 ```
 
 1. **Identity**: YouTube only serves its TV interface to TV and console clients. The launcher passes a user agent in the format of Cobalt, YouTube's TV runtime. The extension rewrites the matching User-Agent Client Hints and `navigator.userAgentData`, so headers and JavaScript agree.
@@ -189,6 +202,7 @@ flowchart LR
 7. **Steam**: shortcuts are written to `userdata/<account>/config/shortcuts.vdf` with the ID Steam itself derives (`crc32(exe + name) | 0x80000000`). Artwork goes to `config/grid/` under the names Steam looks up. A backup of `shortcuts.vdf` is kept as `shortcuts.vdf.steamos-yt.bak`.
 8. **Profiles**: each account's shortcut carries `--steam-account <ID>` in its launch options (anything else you add there is kept). The launcher maps that ID to `profiles/<ID>/` and falls back to the most recent sign-in from Steam's `loginusers.vdf` when started elsewhere.
 9. **Site lock**: a declarativeNetRequest rule blocks top-level pages outside the allowed sites, with an exception for Google's "unusual traffic" check that keeps the TV identity's Client Hints. The extension's background closes every tab but the kiosk's and returns the kiosk tab from blocked pages and browser pages: back to where it was, or to the start page if that repeats within three seconds.
+10. **Ads**: `ads.js` runs in the page before YouTube's own code and wraps `JSON.parse` and `Response.json()`. Every innertube response passes through it, so ad structures are removed wherever they appear, including continuation pages.
 
 Launches run with Steam's `LD_PRELOAD` and runtime library path removed, as Flatpak apps are, so Helium uses its own sandbox and the system libraries.
 
@@ -229,6 +243,7 @@ The smoke test installs into a throwaway home folder. It serves an HTTPS stand-i
 - the controller, wheel and media-capability behaviour;
 - SponsorBlock skips and notices, DeArrow titles and thumbnails, and dislike counts, against mocked services, under a page security policy that blocks third-party images and enforces Trusted Types as YouTube's does. This includes checking that lookups use hash prefixes, that the policy stays in force, that thumbnails follow recycled tiles and that a DeArrow image which fails to load leaves YouTube's in place;
 - all three exit paths, each of which must close the kiosk, one of them in app mode;
+- ad removal: the masthead, ad and promoted sections, a sponsored tile, Shorts ads and the video ad schedule disappear whether the page reads them with `JSON.parse` or `fetch`, and stay when `YT_BLOCK_ADS=0`;
 - the site lock: a pop-up closes, a page on another site never reaches the network and the kiosk returns to YouTube;
 - separate profiles per Steam account: the first account inherits the earlier shared profile, a cookie set by one account stays invisible to another, and each account's cookies persist across launches.
 
@@ -238,7 +253,7 @@ The smoke test installs into a throwaway home folder. It serves an HTTPS stand-i
 | `src/bin/steamos-yt` | Launcher and management CLI (Bash) |
 | `src/lib/common.sh` | Shared shell helpers: Helium download, signature checks, Steam process control |
 | `src/lib/steamos_yt/` | Python standard-library helpers: binary/text VDF, Steam shortcuts and artwork, profile, identity |
-| `src/extension/` | Manifest V3 companion extension: `page.js` (controller, identity, media, exit), `services.js`, `thumbnails.js` and `api.js` (SponsorBlock, DeArrow, Return YouTube Dislike), `background.js` (boot screen, site lock, service lookups); `config.js`, `config.json` and `rules.json` are generated at launch |
+| `src/extension/` | Manifest V3 companion extension: `page.js` (controller, identity, media, exit), `ads.js` (ad removal), `services.js`, `thumbnails.js` and `api.js` (SponsorBlock, DeArrow, Return YouTube Dislike), `background.js` (boot screen, site lock, service lookups); `config.js`, `config.json` and `rules.json` are generated at launch |
 | `src/share/` | Default settings, desktop entry and systemd units |
 | `assets/src`, `assets/artwork` | SVG sources and rendered Steam artwork |
 | `keys/helium.asc` | Helium's public signing key (fingerprint `BE67 7C19 89D3 5EAB 2C5F 26C9 3516 01AD 01D6 378E`) |
@@ -247,6 +262,7 @@ The smoke test installs into a throwaway home folder. It serves an HTTPS stand-i
 
 - [Helium](https://github.com/imputnet/helium) by imput: the browser this project runs in.
 - [VacuumTube](https://github.com/shy1132/VacuumTube): its research into YouTube's TV client informed the Cobalt identity, the Starboard key codes, the media-capability behaviour and the TV-side SponsorBlock, DeArrow and dislike integrations reproduced here.
+- [youtube-webos](https://github.com/webosbrew/youtube-webos) and [TizenTube](https://github.com/reisxd/TizenTube): their work on the TV interface showed where its ads live and how it paints thumbnails.
 - [SponsorBlock](https://sponsor.ajay.app) and [DeArrow](https://dearrow.ajay.app) by Ajay Ramachandran and contributors, and [Return YouTube Dislike](https://returnyoutubedislike.com): the community data behind the skips, titles, thumbnails and dislike counts.
 - [Steam ROM Manager](https://github.com/SteamGridDB/steam-rom-manager): reference for Steam's shortcut and artwork conventions.
 

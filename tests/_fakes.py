@@ -55,10 +55,31 @@ class FakeFirewall:
         return firewall.Firewall(str(FAKES / "firewall-cmd"), str(FAKES / "sudo"))
 
 
+USER_COLLECTIONS = [
+    ["user-collections.favorite", {"key": "user-collections.favorite", "timestamp": 1700000000,
+                                   "value": '{"id":"favorite","name":"","added":[570],"removed":[]}', "version": "12",
+                                   "conflictResolutionMethod": "custom", "strMethodId": "union-collections"}],
+    ["user-collections.uc-rpg", {"key": "user-collections.uc-rpg", "timestamp": 1700000000,
+                                 "value": '{"id":"uc-rpg","name":"RPGs","added":[292030],"removed":[]}', "version": "13",
+                                 "conflictResolutionMethod": "custom", "strMethodId": "union-collections"}],
+]
+
+
+def make_cloud_storage(root: Path, account: int, namespace: int = 1) -> Path:
+    """Steam's collections file for an account, holding Favourites and one collection of the user's own."""
+    directory = root / "userdata" / str(account) / "config" / "cloudstorage"
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "cloud-storage-namespaces.json").write_text(json.dumps([[1, "0"], [namespace, "798"]]))
+    path = directory / f"cloud-storage-namespace-{namespace}.json"
+    path.write_text(json.dumps(USER_COLLECTIONS))
+    return path
+
+
 def make_steam(home: Path, accounts=(ALPHA, BETA)) -> Path:
     root = home / ".local/share/Steam"
     for account in accounts:
         (root / "userdata" / str(account) / "config").mkdir(parents=True)
+        make_cloud_storage(root, account)
     users = "".join(
         f'"{steam.STEAM_ID64_BASE + account}" {{ "AccountName" "u{account}" "PersonaName" "P{account}" '
         f'"MostRecent" "{1 if account == accounts[0] else 0}" }}\n'

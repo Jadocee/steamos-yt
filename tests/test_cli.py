@@ -2,6 +2,7 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,7 +10,7 @@ from unittest import mock
 
 import _fakes
 from _fakes import ALPHA, BETA
-from nonsteamapps import apps, cli, config, steam, vdf
+from nonsteamapps import apps, cli, collection, config, steam, vdf
 
 
 class Exec(Exception):
@@ -249,6 +250,16 @@ class LaunchTests(CliTestCase):
         argv, _ = self.launch("signal", "--steam-account", str(BETA))
         self.assertEqual(argv, [self.fake.command, "run", "org.signal.Signal"])
 
+    def test_jellyfin_and_localsend_are_scaled_for_a_tv_in_game_mode(self):
+        self.launch("jellyfin", "--steam-account", str(ALPHA))
+        for height, jellyfin, localsend in ((2160, "--scale-factor=3", ["--env=GDK_SCALE=3"]), (1080, "--scale-factor=1.5", [])):
+            with mock.patch("nonsteamapps.steamclient.in_game_mode", return_value=True), \
+                    mock.patch("nonsteamapps.display.screen_height", return_value=height):
+                argv, _ = self.launch("jellyfin", "--steam-account", str(ALPHA))
+                self.assertEqual(argv[3:], ["--tv", "--fullscreen", f"--profile=steam-{ALPHA}", jellyfin])
+                argv, _ = self.launch("localsend", "--steam-account", str(ALPHA))
+                self.assertEqual(argv, [self.fake.command, "run", *localsend, "org.localsend.localsend_app"])
+
     def test_keeping_the_sandbox_hides_game_mode_from_vacuumtube_only(self):
         os.environ.update({"SteamOS": "1", "SteamGamepadUI": "1"})
         self.launch("youtube", "--steam-account", str(ALPHA))
@@ -265,6 +276,46 @@ class LaunchTests(CliTestCase):
     def test_unknown_or_missing_app(self):
         self.assertEqual(self.run_cli("launch", "kodi"), 1)
         self.assertEqual(self.run_cli("launch", "--steam-account", "1"), 1)
+
+
+class CollectionTests(CliTestCase):
+    def storage(self, account):
+        return collection.storage_file(self.root, account)
+
+    def test_every_app_goes_in_its_own_collection_in_every_account(self):
+        self.install()
+        for account in (ALPHA, BETA):
+            appids = sorted(steam.to_unsigned32(entry.get("appid")) for entry in self.entries(account).values())
+            self.assertEqual(sorted(collection.members(self.storage(account))), appids)
+            stored = {key: value for key, value in json.loads(self.storage(account).read_text())}
+            self.assertEqual(json.loads(stored[collection.KEY]["value"])["name"], "NonSteamApps")
+            for key, original in _fakes.USER_COLLECTIONS:
+                self.assertEqual(stored[key], original)
+        self.assertIn('Put YouTube (VacuumTube), ', self.errors)
+        self.assertIn('in the "NonSteamApps" collection', self.errors)
+        youtube = steam.to_unsigned32(self.entries(ALPHA)["YouTube"].get("appid"))
+        self.assertEqual(self.run_cli("remove", "youtube", "--yes"), 0, self.errors)
+        self.assertNotIn(youtube, collection.members(self.storage(ALPHA)))
+        self.assertEqual(self.run_cli("uninstall", "--yes"), 0, self.errors)
+        for account in (ALPHA, BETA):
+            stored = {key: value for key, value in json.loads(self.storage(account).read_text())}
+            self.assertTrue(stored[collection.KEY]["is_deleted"])
+
+    def test_the_setting_names_the_collection_or_turns_it_off(self):
+        self.install("youtube")
+        config.set_setting(self.paths.settings, cli.COLLECTION, "Living room")
+        self.install()
+        stored = {key: value for key, value in json.loads(self.storage(ALPHA).read_text())}
+        self.assertEqual(json.loads(stored[collection.KEY]["value"])["name"], "Living room")
+        config.set_setting(self.paths.settings, cli.COLLECTION, "")
+        self.install()
+        self.assertEqual(collection.members(self.storage(ALPHA)), [])
+
+    def test_an_account_steam_has_not_set_up_is_reported(self):
+        shutil.rmtree(steam.config_dir(self.root, BETA) / "cloudstorage")
+        self.install("youtube")
+        self.assertIn("Steam has not set up collections for P222 yet", self.errors)
+        self.assertEqual(len(collection.members(self.storage(ALPHA))), 1)
 
 
 class FirewallTests(CliTestCase):

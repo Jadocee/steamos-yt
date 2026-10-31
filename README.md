@@ -19,7 +19,7 @@ Living-room apps for SteamOS, added to the Steam library with original artwork. 
 ## Features
 
 - **No root, nothing lost on updates.** Apps install into your user Flatpak installation, which SteamOS updates leave alone. An app you already installed, for example through Discover, is used as it is and never uninstalled. The one step that needs your password is opening LocalSend's port when SteamOS's firewall is on, and NonSteamApps asks first.
-- **Every Steam account.** Each account on the device gets a shortcut, with artwork for the library, the capsule, the hero banner, the logo and the icon. The Steam overlay is off.
+- **Every Steam account.** Each account on the device gets a shortcut, with artwork for the library, the capsule, the hero banner, the logo and the icon. The Steam overlay is off. The apps sit together in a **NonSteamApps** collection in the library.
 - **Separate sign-ins.** Each Steam account has its own data in every app except LocalSend, which has no sign-in, so its settings are shared (see [Several Steam accounts](#several-steam-accounts)).
 - **Console-ready browser apps.** Helium, the streaming apps and ProtonDB open without first-run pages, prompts or a "Restore pages?" bubble after Steam closes them. The arrow keys move between links and buttons, the interface is dark, and in Game Mode pages are scaled for the TV (see [Helium apps](#helium-apps)).
 - **Private by default.** Helium blocks ads and trackers with its built-in uBlock Origin. NonSteamApps' Helium profiles also send Global Privacy Control and keep no crash reports (see [Privacy, security and ad blocking](#privacy-security-and-ad-blocking)).
@@ -61,16 +61,17 @@ From a clone, run `./install.sh [APP...]`. Run it again at any time to update No
 
 ## Using the apps
 
-Open them from **Library → Non-Steam** in Game Mode or in the Steam client in Desktop Mode. To quit, use the app's own exit, or press the Steam button and choose **Exit game**.
+Open them from the **NonSteamApps** collection or **Library → Non-Steam**, in Game Mode or in the Steam client in Desktop Mode. To quit, use the app's own exit, or press the Steam button and choose **Exit game**.
 
 - **YouTube:** controllers work out of the box, with Steam's Gamepad layout. Press `Ctrl+O`, or open YouTube's settings, for VacuumTube's settings: ad blocking, SponsorBlock categories, DeArrow, dislikes, hiding Shorts, codec filters and more. Each Steam account's VacuumTube starts set up for a TV: no "Continue watching?" prompt, no Shorts, the time left shown while playing, and HDR allowed. HDR needs an HDR TV, Steam's HDR setting turned on, and VacuumTube running on Wayland; if colours look washed out on a screen without HDR, turn off **Wayland HDR** in VacuumTube's settings. To cast from a phone, choose the device in the YouTube app on the same network. In Game Mode, VacuumTube turns Chromium's sandbox off; `GAME_MODE_SANDBOX=1` keeps it on (see [Configuration](#configuration)).
 - **Element:** Element has no controller navigation, so it gets Steam's Web Browser controller layout, in which the trackpads work as a mouse. Use those or the touchscreen; **Steam + X** opens the on-screen keyboard. To pick another layout, use the controller icon on its library page. On a TV in Game Mode, Element is scaled like the Helium apps (`TV_SCALE`). Closing its window quits it: each Steam account's Element starts with minimising to the tray turned off, because Game Mode has no tray to bring it back from.
 - **Signal:** on its first start, link it to Signal on your phone: in the phone app, open **Settings → Linked devices** and scan the code on screen. Each Steam account links its own Signal. As with Element, it has Steam's Web Browser controller layout and the TV scale, and closing its window quits it. See [How Signal keeps its data](#how-signal-keeps-its-data).
-- **Jellyfin:** starts in its TV layout. Add your server and sign in once for each Steam account.
+- **Jellyfin:** starts in its TV layout. Add your server and sign in once for each Steam account. On a TV in Game Mode, it is scaled like the Helium apps (`TV_SCALE`).
 - **LocalSend:** devices on the same network find each other while LocalSend is open on both. LocalSend listens on port 53317 (TCP and UDP). When SteamOS's firewall (firewalld) is running, the installer offers to open that port, both now and permanently, in every firewall zone in use. `sudo` then asks for your password. Removing LocalSend closes the port again, unless you keep the app with `--keep-app`.
   - **Receiving:** accept a transfer and the files land in `~/Downloads`.
   - **Sending:** you pick files through the system file chooser. If it does not open in Game Mode, send from Desktop Mode.
   - **Controls:** use the touchscreen, or the trackpads in Steam's Web Browser layout.
+  - **On a TV:** in Game Mode, LocalSend is scaled ×2 on a 1440p TV and ×3 on a 4K one. Its toolkit only scales by whole numbers, so it is not scaled at 1080p.
 - **Helium, Prime Video, HBO Max, Netflix, Disney+ and ProtonDB:** see [Helium apps](#helium-apps).
 
 ### On a TV: use its full resolution
@@ -169,13 +170,14 @@ Signal started from the applications menu keeps Flathub's own defaults, includin
 
 ## Configuration
 
-`~/.config/nonsteamapps/nonsteamapps.conf` holds four settings:
+`~/.config/nonsteamapps/nonsteamapps.conf` holds five settings:
 
 | Setting | Default | Effect |
 | --- | --- | --- |
 | `PROFILE_PER_STEAM_ACCOUNT` | `1` | Separate data for each Steam account (see [Several Steam accounts](#several-steam-accounts)) |
+| `STEAM_COLLECTION` | `NonSteamApps` | Name of the Steam collection that holds the apps in each account; leave empty for no collection |
 | `HELIUM_SERVICES` | `1` | Let Helium use its services, which deliver Widevine for the streaming apps and keep the ad blocker's filter lists current |
-| `TV_SCALE` | `auto` | Scale of the Helium apps, Element and Signal: `auto` sizes them for a TV in Game Mode, or a number such as `1.5`. Replaces `HELIUM_SCALE`, which is still read |
+| `TV_SCALE` | `auto` | Scale of the Helium apps, Element, Signal, Jellyfin and LocalSend: `auto` sizes them for a TV in Game Mode, or a number such as `1.5`. Replaces `HELIUM_SCALE`, which is still read |
 | `GAME_MODE_SANDBOX` | `0` | `1` keeps Chromium's sandbox on for YouTube in Game Mode. Not yet confirmed on a Steam Deck: if YouTube then does not start, set it back to `0` |
 
 Anything you add to a shortcut's **Launch Options** in Steam after `--steam-account <ID>` is passed to the app, for example `--debug-gpu` for VacuumTube.
@@ -214,7 +216,7 @@ Installing NonSteamApps on a device with SteamOS YT, the Helium-based YouTube ki
 
 1. `install.sh` copies the program to `~/.local/share/nonsteamapps` and runs `nonsteamapps install`.
 2. Each Flathub app is installed with `flatpak install --user`, unless it is already installed. The Helium apps share one signed Helium release, unpacked in `~/.local/share/nonsteamapps/helium`.
-3. Each app gets a link in `~/.local/share/nonsteamapps/apps/`, for example `apps/youtube`, pointing at the launcher. Steam's shortcut runs that link with `--steam-account <ID>`. Steam derives the shortcut's app ID from the link and the name, and NonSteamApps writes the shortcut to each account's `shortcuts.vdf`, with the artwork in the account's `grid` folder.
+3. Each app gets a link in `~/.local/share/nonsteamapps/apps/`, for example `apps/youtube`, pointing at the launcher. Steam's shortcut runs that link with `--steam-account <ID>`. Steam derives the shortcut's app ID from the link and the name, and NonSteamApps writes the shortcut to each account's `shortcuts.vdf`, with the artwork in the account's `grid` folder. It also adds the app to its collection in the account's collections file (`config/cloudstorage`), which Steam syncs through Steam Cloud. It writes that file the way Steam ROM Manager does, and leaves your other collections alone.
 4. When an app starts, the launcher works out the Steam account: the shortcut's, otherwise the most recent sign-in. It then:
    - removes what Steam adds to a game's environment: its overlay library, which stops Helium starting in Game Mode, and the Steam Runtime's library paths;
    - prepares that account's data (for a Helium app, its profile: preferences, a clean last exit and the shared Widevine folder);
@@ -230,11 +232,13 @@ Installing NonSteamApps on a device with SteamOS YT, the Helium-based YouTube ki
 - **An app does not start:** `nonsteamapps doctor` shows each app's last launch log; `nonsteamapps launch youtube --verbose` runs it in the terminal.
 - **A Helium app stays on Steam's loading screen in Game Mode and cannot be exited** (versions 2.2.0 to 2.8.0): run the installer again to update. Those versions let Steam's overlay library into Helium, which then never starts.
 - **A new Steam account has no shortcuts:** run `nonsteamapps steam add`.
+- **An account has no NonSteamApps collection:** Steam creates an account's collections file the first time it opens the library. Open Steam with that account once, close it, then run `nonsteamapps steam add`.
 - **A Helium update misbehaves:** `nonsteamapps rollback` switches back to the previous version.
 - **A streaming app shows a playback error the first time:** close the app and open it again, once Widevine has downloaded. `nonsteamapps doctor` shows whether it has.
 - **The picture looks soft on a TV:** see [On a TV](#on-a-tv-use-its-full-resolution).
 - **YouTube does not start in Game Mode after setting `GAME_MODE_SANDBOX=1`:** set it back to `0`.
 - **Phones and computers cannot see the device in LocalSend:** `nonsteamapps doctor` shows whether the firewall lets port 53317 in. If it does not, run the installer again. If opening the port failed because your account has no password, set one first with `passwd`. Also check that your router does not isolate devices from each other, which guest networks often do.
+- **The screen dims, or the device sleeps, during a video:** Game Mode ignores the requests that video apps send to keep the screen on. In Steam's settings, under Display and Power, lengthen or turn off the dimming and sleep timers. Alternatively, use a Decky Loader plugin that pauses them while something plays.
 - **Casting from the YouTube app does not find the device:** with the firewall on, casting may be blocked. VacuumTube answers on UDP port 1900 and a TCP port it picks at random each time, so NonSteamApps cannot open a fixed port for it.
 
 ## Development
@@ -250,7 +254,7 @@ node tools/render-artwork.js [APP...]          # render assets/src/<app> into as
 | --- | --- |
 | `install.sh`, `uninstall.sh` | Entry points (work from a clone or through `curl … \| bash`) |
 | `src/bin/nonsteamapps` | Launcher: runs the command-line interface, or starts an app when called through its link |
-| `src/lib/nonsteamapps/` | Python standard-library package: `apps.py` (the apps), `flatpak.py`, `helium.py` (the signed Helium release), `browser.py` (console profiles and flags), `display.py` (TV scale), `controllers.py` (Steam layouts), `steam.py` and `vdf.py` (shortcuts and artwork), `steamclient.py`, `firewall.py` (LocalSend's port), `legacy.py` (SteamOS YT), `cli.py` |
+| `src/lib/nonsteamapps/` | Python standard-library package: `apps.py` (the apps), `flatpak.py`, `helium.py` (the signed Helium release), `browser.py` (console profiles and flags), `display.py` (TV scale), `controllers.py` (Steam layouts), `collection.py` (the Steam collection), `steam.py` and `vdf.py` (shortcuts and artwork), `steamclient.py`, `firewall.py` (LocalSend's port), `legacy.py` (SteamOS YT), `cli.py` |
 | `src/share/` | Default settings, the update timer and Helium's public signing key (fingerprint `BE67 7C19 89D3 5EAB 2C5F 26C9 3516 01AD 01D6 378E`) |
 | `assets/src/<app>`, `assets/artwork/<app>` | SVG sources and rendered Steam artwork |
 | `tests/fakes/` | Stand-ins for `flatpak`, `firewall-cmd` and `sudo`, used by the tests; `tests/_fakes.py` also builds a stand-in Helium release |

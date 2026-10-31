@@ -160,11 +160,36 @@ class Browser:
 
 
 @dataclass(frozen=True)
+class TvScale:
+    """How an app takes its TV scale: a command-line ``argument`` with ``{factor}`` in it, or an environment ``variable``.
+
+    A ``whole`` scale is rounded down, and dropped below 2, for toolkits that only scale by whole numbers.
+    """
+
+    argument: str = ""
+    variable: str = ""
+    whole: bool = False
+
+    def apply(self, factor: float) -> Tuple[List[str], List[str]]:
+        """Return the app's arguments and ``flatpak run`` options for this scale."""
+        value = float(int(factor)) if self.whole else factor
+        if self.whole and value < 2:
+            return [], []
+        text = f"{value:g}"
+        arguments = [self.argument.format(factor=text)] if self.argument else []
+        options = [f"--env={self.variable}={text}"] if self.variable else []
+        return arguments, options
+
+
+CHROMIUM_SCALE = TvScale(argument="--force-device-scale-factor={factor}")
+
+
+@dataclass(frozen=True)
 class App:
     """An app NonSteamApps installs: from Flathub (``flatpak``) or in its own Helium (``browser``).
 
-    ``controller`` names one of Valve's controller layouts to give the shortcut. ``tv_scale`` scales an
-    Electron app for a TV in Game Mode, as the Helium apps always are. ``sandbox_off_when`` names
+    ``controller`` names one of Valve's controller layouts to give the shortcut. ``tv_scale`` says how a
+    Flathub app is scaled for a TV in Game Mode, as the Helium apps always are. ``sandbox_off_when`` names
     environment variables that make the app turn Chromium's sandbox off; the launcher hides them when
     the user chooses to keep the sandbox. ``notice`` is shown after installing. ``ports`` are opened in
     the firewall, when one is running, so other devices can reach the app.
@@ -181,7 +206,7 @@ class App:
     controller: str = ""
     logo_position: str = "BottomLeft:42:58"
     legacy_exes: Tuple[str, ...] = ()
-    tv_scale: bool = False
+    tv_scale: Optional[TvScale] = None
     sandbox_off_when: Tuple[str, ...] = ()
     notice: str = ""
     ports: Tuple[str, ...] = ()
@@ -232,7 +257,7 @@ APPS: Tuple[App, ...] = (
             defaults=(("electron-config.json", json.dumps(ELEMENT_DEFAULTS, indent=4) + "\n"),),
         ),
         logo_position="BottomLeft:44:56",
-        tv_scale=True,
+        tv_scale=CHROMIUM_SCALE,
     ),
     App(
         id="signal",
@@ -249,7 +274,7 @@ APPS: Tuple[App, ...] = (
             fixed=("SIGNAL_PASSWORD_STORE=basic",),
         ),
         logo_position="BottomLeft:44:56",
-        tv_scale=True,
+        tv_scale=CHROMIUM_SCALE,
         notice="Signal keeps its database key unencrypted on disk, as Flathub's Signal does by default; see the README",
     ),
     App(
@@ -261,6 +286,7 @@ APPS: Tuple[App, ...] = (
         args=("--tv", "--fullscreen"),
         profile=JellyfinProfile(),
         logo_position="BottomLeft:44:56",
+        tv_scale=TvScale(argument="--scale-factor={factor}"),
     ),
     App(
         id="localsend",
@@ -271,6 +297,7 @@ APPS: Tuple[App, ...] = (
         controller=WEB_BROWSER,
         logo_position="BottomLeft:44:56",
         ports=("53317/tcp", "53317/udp"),
+        tv_scale=TvScale(variable="GDK_SCALE", whole=True),
     ),
     App(
         id="helium",

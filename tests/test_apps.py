@@ -64,7 +64,7 @@ class ArgumentTests(unittest.TestCase):
         self.assertEqual([app.id for app in apps.APPS if not app.controller], ["jellyfin"])
 
     def test_element_scales_for_a_tv_and_vacuumtube_can_keep_its_sandbox(self):
-        self.assertEqual([app.id for app in apps.APPS if app.tv_scale], ["element", "signal"])
+        self.assertEqual([app.id for app in apps.APPS if app.tv_scale], ["element", "signal", "jellyfin", "localsend"])
         self.assertEqual(
             {app.id: app.sandbox_off_when for app in apps.APPS if app.sandbox_off_when},
             {"youtube": ("SteamGamepadUI",)},
@@ -83,6 +83,13 @@ class ArgumentTests(unittest.TestCase):
         self.assertEqual(signal.run_options(111), ["--command=env"])
         self.assertEqual((signal.arguments(HOME, None), signal.run_options(None)), ([], []))
         self.assertEqual(apps.by_id("element").run_options(111), [])
+
+    def test_each_toolkit_takes_the_tv_scale_its_own_way(self):
+        self.assertEqual(apps.by_id("element").tv_scale.apply(1.5), (["--force-device-scale-factor=1.5"], []))
+        self.assertEqual(apps.by_id("jellyfin").tv_scale.apply(3.0), (["--scale-factor=3"], []))
+        localsend = apps.by_id("localsend").tv_scale
+        self.assertEqual([localsend.apply(factor) for factor in (1.5, 2.0, 2.75, 3.0)],
+                         [([], []), ([], ["--env=GDK_SCALE=2"]), ([], ["--env=GDK_SCALE=2"]), ([], ["--env=GDK_SCALE=3"])])
 
     def test_jellyfin_starts_in_its_tv_layout_with_a_named_profile(self):
         self.assertEqual(apps.by_id("jellyfin").arguments(HOME, 333), ["--tv", "--fullscreen", "--profile=steam-333"])

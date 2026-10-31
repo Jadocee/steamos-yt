@@ -50,6 +50,11 @@ def _managed(record: Record) -> List[App]:
     return [app for app in apps.APPS if app.id in record.apps]
 
 
+def _names(chosen: Sequence[App]) -> str:
+    names = [app.name for app in chosen]
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+
+
 def _listing(chosen: Sequence[App]) -> str:
     names = [f"{app.name} ({app.client})" if app.name != app.client else app.name for app in chosen]
     return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
@@ -459,8 +464,10 @@ def cmd_launch(argv: Sequence[str], paths: Paths, flatpak: Flatpak) -> int:
     if not account and app.profile:
         app.profile.prepare_shared(app.home(paths.home))
     factor = display.scale(_scale_setting(settings), steamclient.in_game_mode()) if app.tv_scale else None
-    scale = [f"--force-device-scale-factor={factor:g}"] if factor else []
-    command = flatpak.run_args(app.flatpak, [*app.arguments(paths.home, account), *scale, *extra], app.run_options(account))
+    scale, scale_options = app.tv_scale.apply(factor) if app.tv_scale and factor else ([], [])
+    command = flatpak.run_args(
+        app.flatpak, [*app.arguments(paths.home, account), *scale, *extra], [*app.run_options(account), *scale_options]
+    )
     hidden = [variable for variable in app.sandbox_off_when if variable in os.environ]
     if hidden and config.enabled(settings.get(GAME_MODE_SANDBOX)):
         for variable in hidden:
@@ -607,7 +614,7 @@ def cmd_doctor(args, paths: Paths, flatpak: Flatpak) -> int:
         ("Flatpak", "available" if flatpak.available() else "not installed"),
         ("Helium", _helium_status(paths, settings)),
         ("Firewall", _firewall_status(Record.load(paths.record))),
-        ("TV scale", f"{_scale_setting(settings)} (Helium apps, {' and '.join(app.name for app in apps.APPS if app.tv_scale)})"),
+        ("TV scale", f"{_scale_setting(settings)} (Helium apps, {_names([app for app in apps.APPS if app.tv_scale])})"),
         ("Updates", timer.status(paths)),
     ]
     root = _steam_root()

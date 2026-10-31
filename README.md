@@ -66,11 +66,12 @@ Open them from the **NonSteamApps** collection or **Library → Non-Steam**, in 
 - **YouTube:** controllers work out of the box, with Steam's Gamepad layout. Press `Ctrl+O`, or open YouTube's settings, for VacuumTube's settings: ad blocking, SponsorBlock categories, DeArrow, dislikes, hiding Shorts, codec filters and more. Each Steam account's VacuumTube starts set up for a TV: no "Continue watching?" prompt, no Shorts, the time left shown while playing, and HDR allowed. HDR needs an HDR TV, Steam's HDR setting turned on, and VacuumTube running on Wayland; if colours look washed out on a screen without HDR, turn off **Wayland HDR** in VacuumTube's settings. To cast from a phone, choose the device in the YouTube app on the same network. In Game Mode, VacuumTube turns Chromium's sandbox off; `GAME_MODE_SANDBOX=1` keeps it on (see [Configuration](#configuration)).
 - **Element:** Element has no controller navigation, so it gets Steam's Web Browser controller layout, in which the trackpads work as a mouse. Use those or the touchscreen; **Steam + X** opens the on-screen keyboard. To pick another layout, use the controller icon on its library page. On a TV in Game Mode, Element is scaled like the Helium apps (`TV_SCALE`). Closing its window quits it: each Steam account's Element starts with minimising to the tray turned off, because Game Mode has no tray to bring it back from.
 - **Signal:** on its first start, link it to Signal on your phone: in the phone app, open **Settings → Linked devices** and scan the code on screen. Each Steam account links its own Signal. As with Element, it has Steam's Web Browser controller layout and the TV scale, and closing its window quits it. See [How Signal keeps its data](#how-signal-keeps-its-data).
-- **Jellyfin:** starts in its TV layout. Add your server and sign in once for each Steam account.
+- **Jellyfin:** starts in its TV layout. Add your server and sign in once for each Steam account. On a TV in Game Mode, it is scaled like the Helium apps (`TV_SCALE`).
 - **LocalSend:** devices on the same network find each other while LocalSend is open on both. LocalSend listens on port 53317 (TCP and UDP). When SteamOS's firewall (firewalld) is running, the installer offers to open that port, both now and permanently, in every firewall zone in use. `sudo` then asks for your password. Removing LocalSend closes the port again, unless you keep the app with `--keep-app`.
   - **Receiving:** accept a transfer and the files land in `~/Downloads`.
   - **Sending:** you pick files through the system file chooser. If it does not open in Game Mode, send from Desktop Mode.
   - **Controls:** use the touchscreen, or the trackpads in Steam's Web Browser layout.
+  - **On a TV:** in Game Mode, LocalSend is scaled ×2 on a 1440p TV and ×3 on a 4K one. Its toolkit only scales by whole numbers, so it is not scaled at 1080p.
 - **Helium, Prime Video, HBO Max, Netflix, Disney+ and ProtonDB:** see [Helium apps](#helium-apps).
 
 ### On a TV: use its full resolution
@@ -176,7 +177,7 @@ Signal started from the applications menu keeps Flathub's own defaults, includin
 | `PROFILE_PER_STEAM_ACCOUNT` | `1` | Separate data for each Steam account (see [Several Steam accounts](#several-steam-accounts)) |
 | `STEAM_COLLECTION` | `NonSteamApps` | Name of the Steam collection that holds the apps in each account; leave empty for no collection |
 | `HELIUM_SERVICES` | `1` | Let Helium use its services, which deliver Widevine for the streaming apps and keep the ad blocker's filter lists current |
-| `TV_SCALE` | `auto` | Scale of the Helium apps, Element and Signal: `auto` sizes them for a TV in Game Mode, or a number such as `1.5`. Replaces `HELIUM_SCALE`, which is still read |
+| `TV_SCALE` | `auto` | Scale of the Helium apps, Element, Signal, Jellyfin and LocalSend: `auto` sizes them for a TV in Game Mode, or a number such as `1.5`. Replaces `HELIUM_SCALE`, which is still read |
 | `GAME_MODE_SANDBOX` | `0` | `1` keeps Chromium's sandbox on for YouTube in Game Mode. Not yet confirmed on a Steam Deck: if YouTube then does not start, set it back to `0` |
 
 Anything you add to a shortcut's **Launch Options** in Steam after `--steam-account <ID>` is passed to the app, for example `--debug-gpu` for VacuumTube.
@@ -237,6 +238,7 @@ Installing NonSteamApps on a device with SteamOS YT, the Helium-based YouTube ki
 - **The picture looks soft on a TV:** see [On a TV](#on-a-tv-use-its-full-resolution).
 - **YouTube does not start in Game Mode after setting `GAME_MODE_SANDBOX=1`:** set it back to `0`.
 - **Phones and computers cannot see the device in LocalSend:** `nonsteamapps doctor` shows whether the firewall lets port 53317 in. If it does not, run the installer again. If opening the port failed because your account has no password, set one first with `passwd`. Also check that your router does not isolate devices from each other, which guest networks often do.
+- **The screen dims, or the device sleeps, during a video:** Game Mode ignores the requests that video apps send to keep the screen on. In Steam's settings, under Display and Power, lengthen or turn off the dimming and sleep timers. Alternatively, use a Decky Loader plugin that pauses them while something plays.
 - **Casting from the YouTube app does not find the device:** with the firewall on, casting may be blocked. VacuumTube answers on UDP port 1900 and a TCP port it picks at random each time, so NonSteamApps cannot open a fixed port for it.
 
 ## Development

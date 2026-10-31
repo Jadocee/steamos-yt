@@ -250,6 +250,16 @@ class LaunchTests(CliTestCase):
         argv, _ = self.launch("signal", "--steam-account", str(BETA))
         self.assertEqual(argv, [self.fake.command, "run", "org.signal.Signal"])
 
+    def test_jellyfin_and_localsend_are_scaled_for_a_tv_in_game_mode(self):
+        self.launch("jellyfin", "--steam-account", str(ALPHA))
+        for height, jellyfin, localsend in ((2160, "--scale-factor=3", ["--env=GDK_SCALE=3"]), (1080, "--scale-factor=1.5", [])):
+            with mock.patch("nonsteamapps.steamclient.in_game_mode", return_value=True), \
+                    mock.patch("nonsteamapps.display.screen_height", return_value=height):
+                argv, _ = self.launch("jellyfin", "--steam-account", str(ALPHA))
+                self.assertEqual(argv[3:], ["--tv", "--fullscreen", f"--profile=steam-{ALPHA}", jellyfin])
+                argv, _ = self.launch("localsend", "--steam-account", str(ALPHA))
+                self.assertEqual(argv, [self.fake.command, "run", *localsend, "org.localsend.localsend_app"])
+
     def test_keeping_the_sandbox_hides_game_mode_from_vacuumtube_only(self):
         os.environ.update({"SteamOS": "1", "SteamGamepadUI": "1"})
         self.launch("youtube", "--steam-account", str(ALPHA))

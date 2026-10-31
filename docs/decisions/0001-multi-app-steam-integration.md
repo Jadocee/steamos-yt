@@ -193,6 +193,21 @@ The owner answered the open questions. Where these answers differ from the text 
     - **Removal:** apps taken out are listed under `removed`, so that the merge does not bring them back. The collection is marked deleted once it is empty, which uninstalling causes.
     - **Accounts not set up yet:** an account whose collections file does not exist yet is reported and skipped, because creating that file could conflict with Steam's own.
 
+18. **Launch settings, and staying with Flatpak (owner request).** A review of environment variables and launch options for each app led to the following.
+    - **Jellyfin** takes the TV scale through its own `--scale-factor` option, which sets `QT_SCALE_FACTOR`.
+    - **LocalSend** takes it through `GDK_SCALE`, passed with `flatpak run --env`. GTK only scales by whole numbers, so the scale is rounded down and left out below 2. `apps.TvScale` describes how each app takes its scale.
+    - **Screen dimming during videos** cannot be fixed with a launch setting: Game Mode ignores the requests apps send to keep the screen on [20]. The README points to Steam's dimming and sleep timers.
+    - **File picker in Game Mode:** the 2022 `XDG_CURRENT_DESKTOP=KDE` workaround is left for a test on a device first.
+    - **pacman instead of Flatpak:** the owner asked whether installing with pacman would avoid most issues. It would not, because almost every issue so far comes from Game Mode, Steam or SteamOS, which treat pacman-installed apps the same way. It would also add new problems:
+      - every SteamOS update removes the apps;
+      - root and a writable system are needed for every install;
+      - the system partition is about 5 GB [21];
+      - SteamOS's frozen repositories would let Signal expire;
+      - VacuumTube, LocalSend and Helium are only in the AUR;
+      - Flatpak's isolation, which kept Steam's overlay library out of the Electron apps, would be lost.
+
+      Flathub therefore stays the source, as decided above.
+
 Still open: layouts NonSteamApps designs itself, and Maximum Game Resolution (the rest of migration phase 4).
 
 ## Sources
@@ -216,3 +231,5 @@ Still open: layouts NonSteamApps designs itself, and Maximum Game Resolution (th
 17. [LocalSend README](https://github.com/localsend/localsend#setup), "Setup": incoming TCP and UDP on 53317, and the `firewall-cmd` commands
 18. [Steam Community: "Please include a firewall"](https://steamcommunity.com/app/1675200/discussions/2/3416557114749187579/), on firewalld arriving with SteamOS 3.5
 19. [Steam ROM Manager](https://github.com/SteamGridDB/steam-rom-manager): `src/lib/category-manager.ts`, which writes collections to Steam's cloud storage file
+20. [decky-insomnia](https://zff.dev/kartikynwa/decky-insomnia), on Game Mode ignoring apps' requests to keep the screen on
+21. [Robert Kirkman's SteamOS pacman guide](https://gist.github.com/robertkirkman/753922262259486ec417e5ff8b5b924b), on the 5 GB system partition and SteamOS's repositories

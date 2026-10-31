@@ -210,6 +210,9 @@ def _summary(paths: Paths, managed: Sequence[App], separate: bool) -> None:
         client = f" ({app.client})" if app.client != app.name else ""
         ui.info(f"{app.name + ':':<{width}}Steam ▸ Library ▸ Non-Steam ▸ {app.name}{client}")
     ui.info(f"{'Sign-ins:':<{width}}{'separate for each Steam account' if separate else 'shared by all Steam accounts'}")
+    for app in managed:
+        if app.notice:
+            ui.info(f"{'Note:':<{width}}{app.notice}")
     ui.info(f"{'TV:':<{width}}for an app's full resolution, open it in Game Mode: {RESOLUTION_HINT}")
     ui.info(f"{'Settings:':<{width}}{paths.settings}")
 
@@ -353,7 +356,7 @@ def cmd_launch(argv: Sequence[str], paths: Paths, flatpak: Flatpak) -> int:
         app.profile.prepare_shared(app.home(paths.home))
     factor = display.scale(_scale_setting(settings), steamclient.in_game_mode()) if app.tv_scale else None
     scale = [f"--force-device-scale-factor={factor:g}"] if factor else []
-    command = flatpak.run_args(app.flatpak, [*app.arguments(paths.home, account), *scale, *extra])
+    command = flatpak.run_args(app.flatpak, [*app.arguments(paths.home, account), *scale, *extra], app.run_options(account))
     hidden = [variable for variable in app.sandbox_off_when if variable in os.environ]
     if hidden and config.enabled(settings.get(GAME_MODE_SANDBOX)):
         for variable in hidden:
@@ -499,7 +502,7 @@ def cmd_doctor(args, paths: Paths, flatpak: Flatpak) -> int:
         ("Python", platform.python_version()),
         ("Flatpak", "available" if flatpak.available() else "not installed"),
         ("Helium", _helium_status(paths, settings)),
-        ("TV scale", f"{_scale_setting(settings)} (Helium apps and Element)"),
+        ("TV scale", f"{_scale_setting(settings)} (Helium apps, {' and '.join(app.name for app in apps.APPS if app.tv_scale)})"),
         ("Updates", timer.status(paths)),
     ]
     root = _steam_root()

@@ -170,6 +170,18 @@ The owner answered the open questions. Where these answers differ from the text 
     - **Element: one flag.** In Game Mode on a screen 1000 pixels tall or more, it starts with `--force-device-scale-factor`, by the Helium apps' rule. The setting becomes `TV_SCALE`, and `HELIUM_SCALE` is still read. Element has no TV layout, so at Native resolution on a 4K TV its text is too small to read. Its sandbox stays on. Spatial navigation is left off, because Element's own arrow-key handling in lists and the composer would conflict with it.
     - **Element's tray.** Element minimises to the tray by default, and Electron creates the tray icon even in Game Mode, where nothing shows it. Closing the window then hides Element, and Steam still counts it as running. New per-account profiles therefore start with `minimizeToTray` off. Those profiles are only started through Steam, and Element's own profile is left alone.
 
+12. **Signal (owner request).** Signal Desktop comes from Flathub as `org.signal.Signal`, an unofficial repackaging of Signal's own release [13]. Its launch script defaults to the plaintext key store and asks for confirmation on a first start. It decides whether to ask from `$XDG_CONFIG_HOME/Signal/config.json`. Signal keeps its data in `$XDG_CONFIG_HOME/Signal` and has no switch for another folder [14].
+    - **Per-account data:** `flatpak run --env` cannot change `XDG_CONFIG_HOME`, because Flatpak applies `--env` first and then sets the XDG directories itself [15]. Each account's Signal therefore starts through `env` inside the sandbox, as `flatpak run --command=env org.signal.Signal XDG_CONFIG_HOME=<folder> SIGNAL_PASSWORD_STORE=basic signal-desktop`. Signal's own script still runs, so its sandboxing and defaults stay in place, and its question is keyed to the account's folder.
+    - **Key store:** always `basic` for these profiles. A profile then opens the same way in Game Mode, which has no keyring, and in Desktop Mode, as decided for Element in item 4. Signal refuses a database whose key store has changed [14].
+    - **First-start question:** the script preselects quitting, which a controller can trigger by accident. NonSteamApps creates the account's `Signal/config.json` as an empty settings object, which Signal fills on its first start, so the question is skipped. The same notice appears after installing and in the README.
+    - **Console fit:** the Web Browser controller layout and the TV scale, as for Element. Signal leaves its tray off by default on Linux, so closing the window quits it.
+
+13. **VacuumTube on a TV, and a gamepad layout (owner request, for the Steam Machine).**
+    - **New per-account folders** also start with the "Continue watching?" prompt blocked, Shorts hidden, the remaining-time display on and Wayland HDR on. The remaining-time display needs VacuumTube's extended features, which are switched on with it. Wayland HDR only stops VacuumTube switching off Chromium's Wayland colour management, so it applies only where VacuumTube runs on Wayland. VacuumTube warns that it can wash out colours on some screens without HDR; each account can turn it off in VacuumTube's settings.
+    - **Layout:** the YouTube shortcut gets Valve's Gamepad layout. Where Valve ships two files with one title for a controller, as for Xbox controllers, the plain joystick file is chosen.
+    - **Bug fix:** reading Valve's current templates [16] showed that most of them begin with a UTF-8 byte-order mark. The text VDF reader took the mark for a stray token and skipped those files, among them the Deck's Gamepad layouts. The reader now ignores the mark. The Web Browser template has no mark, which is why it already worked.
+    - **The new Steam Controller** has no template of its own in Steam's files yet, so it keeps Steam's default layout. When Valve adds one titled "Gamepad", the next install or repair picks it up.
+
 Still open: layouts NonSteamApps designs itself, and Maximum Game Resolution (the rest of migration phase 4).
 
 ## Sources
@@ -186,3 +198,7 @@ Still open: layouts NonSteamApps designs itself, and Maximum Game Resolution (th
 10. [Steam Community: an Electron app hangs in Game Mode without `--no-sandbox`](https://steamcommunity.com/app/1675200/discussions/1/4826187053916237100)
 11. [anthrodeck pull request 11: Steam's overlay, preloaded into Chromium's zygote, stops Electron starting](https://github.com/keaton4422/anthrodeck/pull/11)
 12. [SteamOS 3.8 release coverage: Wayland by default in Desktop Mode](https://www.inkl.com/news/valves-latest-steamos-is-out-with-initial-support-for-upcoming-steam-machine-hardware)
+13. [Flathub `org.signal.Signal`](https://github.com/flathub/org.signal.Signal): `signal-desktop.sh` and the README
+14. [Signal Desktop](https://github.com/signalapp/Signal-Desktop): `app/user_config.main.ts` for the data folder, `app/main.main.ts` for `getSQLKey` and key-store changes, and `ts/types/Settings.std.ts` for the tray default
+15. [Flatpak](https://github.com/flatpak/flatpak): `common/flatpak-run.c`, which applies `--env` first, and `common/flatpak-context.c` (`flatpak_context_apply_env_appid`)
+16. [SteamTracking](https://github.com/SteamDatabase/SteamTracking): `ClientExtracted/controller_base/templates`, the Steam client's controller layouts, as of 29 October 2026

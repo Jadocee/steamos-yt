@@ -289,8 +289,8 @@ def _tokenize(text: str) -> Iterator[Tuple[str, str]]:
 
 
 def loads_text(text: str) -> KeyValues:
-    """Decode text VDF such as ``loginusers.vdf``; every leaf is a string."""
-    tokens = [token for token in _tokenize(text) if token[0] != "cond"]
+    """Decode text VDF such as ``loginusers.vdf``; every leaf is a string. A leading byte-order mark is ignored."""
+    tokens = [token for token in _tokenize(text.lstrip("\ufeff")) if token[0] != "cond"]
     root = KeyValues()
     stack = [root]
     index = 0

@@ -13,7 +13,7 @@ class RegistryTests(unittest.TestCase):
     def test_ids_and_lookup(self):
         self.assertEqual(
             apps.ids(),
-            ["youtube", "element", "jellyfin", "localsend", "helium", "primevideo", "hbomax", "netflix", "disneyplus"],
+            ["youtube", "element", "signal", "jellyfin", "localsend", "helium", "primevideo", "hbomax", "netflix", "disneyplus"],
         )
         self.assertEqual(apps.by_id(" YouTube ").flatpak, "rocks.shy.VacuumTube")
         self.assertEqual(apps.by_id("DisneyPlus").name, "Disney+")
@@ -55,16 +55,32 @@ class ArgumentTests(unittest.TestCase):
             self.assertEqual((app.flatpak, app.client, app.browser.url, app.browser.kiosk), ("", "Helium", url, kiosk))
             self.assertEqual(app.controller, apps.WEB_BROWSER)
         self.assertEqual(
-            [app.id for app in apps.APPS if app.controller],
-            ["element", "localsend", "helium", "primevideo", "hbomax", "netflix", "disneyplus"],
+            [app.id for app in apps.APPS if app.controller == apps.WEB_BROWSER],
+            ["element", "signal", "localsend", "helium", "primevideo", "hbomax", "netflix", "disneyplus"],
         )
+        self.assertEqual([app.id for app in apps.APPS if app.controller == apps.GAMEPAD], ["youtube"])
+        self.assertEqual([app.id for app in apps.APPS if not app.controller], ["jellyfin"])
 
     def test_element_scales_for_a_tv_and_vacuumtube_can_keep_its_sandbox(self):
-        self.assertEqual([app.id for app in apps.APPS if app.tv_scale], ["element"])
+        self.assertEqual([app.id for app in apps.APPS if app.tv_scale], ["element", "signal"])
         self.assertEqual(
             {app.id: app.sandbox_off_when for app in apps.APPS if app.sandbox_off_when},
             {"youtube": ("SteamGamepadUI",)},
         )
+
+    def test_signal_starts_its_own_script_with_the_accounts_folder_and_plain_key_store(self):
+        signal = apps.by_id("signal")
+        self.assertEqual(
+            signal.arguments(HOME, 111),
+            [
+                "XDG_CONFIG_HOME=/home/deck/.var/app/org.signal.Signal/config/Signal-steam-111",
+                "SIGNAL_PASSWORD_STORE=basic",
+                "signal-desktop",
+            ],
+        )
+        self.assertEqual(signal.run_options(111), ["--command=env"])
+        self.assertEqual((signal.arguments(HOME, None), signal.run_options(None)), ([], []))
+        self.assertEqual(apps.by_id("element").run_options(111), [])
 
     def test_jellyfin_starts_in_its_tv_layout_with_a_named_profile(self):
         self.assertEqual(apps.by_id("jellyfin").arguments(HOME, 333), ["--tv", "--fullscreen", "--profile=steam-333"])
@@ -91,12 +107,24 @@ class ProfileTests(unittest.TestCase):
             ["VacuumTube-steam-111", "VacuumTube-steam-222"],
         )
 
-    def test_new_vacuumtube_folders_turn_on_sponsorblock_dearrow_and_dislikes(self):
+    def test_new_vacuumtube_folders_start_set_up_for_a_tv(self):
         youtube = apps.by_id("youtube")
         app_home = youtube.home(self.home)
         youtube.profile.prepare(app_home, 111, lambda options: 0)
         settings = app_home / "config/VacuumTube-steam-111/config.json"
-        self.assertEqual(json.loads(settings.read_text()), {"sponsorblock": True, "dearrow": True, "dislikes": True})
+        self.assertEqual(
+            json.loads(settings.read_text()),
+            {
+                "sponsorblock": True,
+                "dearrow": True,
+                "dislikes": True,
+                "block_continue_watching": True,
+                "hide_shorts": True,
+                "features_enabled": True,
+                "remaining_time_feature": True,
+                "wayland_hdr": True,
+            },
+        )
         settings.write_text('{"sponsorblock": false}')
         youtube.profile.prepare(app_home, 111, lambda options: 0)
         self.assertEqual(json.loads(settings.read_text()), {"sponsorblock": False})
@@ -114,6 +142,19 @@ class ProfileTests(unittest.TestCase):
         self.assertTrue(json.loads(settings.read_text())["minimizeToTray"])
         element.profile.prepare_shared(app_home)
         self.assertFalse((app_home / "config/Element").exists())
+
+    def test_new_signal_folders_skip_the_flatpaks_first_start_question(self):
+        signal = apps.by_id("signal")
+        app_home = signal.home(self.home)
+        signal.profile.prepare(app_home, 111, lambda options: 0)
+        settings = app_home / "config/Signal-steam-111/Signal/config.json"
+        self.assertEqual(json.loads(settings.read_text()), {})
+        settings.write_text('{"key": "secret"}')
+        signal.profile.prepare(app_home, 111, lambda options: 0)
+        self.assertEqual(json.loads(settings.read_text()), {"key": "secret"})
+        signal.profile.prepare_shared(app_home)
+        self.assertFalse((app_home / "config/Signal").exists())
+        self.assertEqual([path.name for path in signal.profile.existing(app_home)], ["Signal-steam-111"])
 
     def make_jellyfin_profile(self, app_home, name, folder):
         directory = app_home / "data/jellyfin-desktop/profiles" / folder

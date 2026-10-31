@@ -75,11 +75,15 @@ class InstallTests(CliTestCase):
         self.install()
         self.assertEqual(
             [call[-1] for call in self.fake.calls("install")],
-            ["rocks.shy.VacuumTube", "im.riot.Riot", "org.jellyfin.JellyfinDesktop", "org.localsend.localsend_app"],
+            ["rocks.shy.VacuumTube", "im.riot.Riot", "org.signal.Signal", "org.jellyfin.JellyfinDesktop", "org.localsend.localsend_app"],
         )
         record = config.Record.load(self.paths.record)
         self.assertEqual(record.managed(), apps.ids())
-        self.assertEqual([app.id for app in apps.APPS if record.owns_flatpak(app.id)], ["youtube", "element", "jellyfin", "localsend"])
+        self.assertEqual(
+            [app.id for app in apps.APPS if record.owns_flatpak(app.id)], ["youtube", "element", "signal", "jellyfin", "localsend"]
+        )
+        self.assertIn("Note:", self.errors)
+        self.assertIn("Signal keeps its database key unencrypted on disk", self.errors)
         self.assertEqual(cli._runtime(self.paths).current(), "0.0.0.1")
         for account in (ALPHA, BETA):
             entries = self.entries(account)
@@ -103,6 +107,7 @@ class InstallTests(CliTestCase):
         self.assertIn("    YouTube:   Steam ▸ Library ▸ Non-Steam ▸ YouTube (VacuumTube)\n", self.errors)
         self.assertIn("    LocalSend: Steam ▸ Library ▸ Non-Steam ▸ LocalSend\n", self.errors)
         self.assertIn("    Sign-ins:  separate for each Steam account\n", self.errors)
+        self.assertNotIn("Note:", self.errors)
 
     def test_rerunning_without_names_repairs_only_the_apps_in_use(self):
         self.install("youtube")
@@ -225,6 +230,23 @@ class LaunchTests(CliTestCase):
             argv, _ = self.launch("element", "--steam-account", str(ALPHA))
         self.assertEqual(argv[-1], f"--profile=steam-{ALPHA}")
 
+    def test_signal_starts_through_env_with_the_accounts_folder(self):
+        with mock.patch("nonsteamapps.steamclient.in_game_mode", return_value=True), \
+                mock.patch("nonsteamapps.display.screen_height", return_value=1080):
+            argv, redirect = self.launch("signal", "--steam-account", str(BETA))
+        folder = self.home / f".var/app/org.signal.Signal/config/Signal-steam-{BETA}"
+        self.assertEqual(
+            argv,
+            [self.fake.command, "run", "--command=env", "org.signal.Signal", f"XDG_CONFIG_HOME={folder}",
+             "SIGNAL_PASSWORD_STORE=basic", "signal-desktop", "--force-device-scale-factor=1.5"],
+        )
+        self.assertEqual(json.loads((folder / "Signal/config.json").read_text()), {})
+        redirect.assert_called_once_with(self.paths.log("signal"))
+        self.paths.settings.parent.mkdir(parents=True, exist_ok=True)
+        self.paths.settings.write_text(f"{cli.PER_ACCOUNT}=0\n")
+        argv, _ = self.launch("signal", "--steam-account", str(BETA))
+        self.assertEqual(argv, [self.fake.command, "run", "org.signal.Signal"])
+
     def test_keeping_the_sandbox_hides_game_mode_from_vacuumtube_only(self):
         os.environ.update({"SteamOS": "1", "SteamGamepadUI": "1"})
         self.launch("youtube", "--steam-account", str(ALPHA))
@@ -320,6 +342,11 @@ class HeliumAppTests(CliTestCase):
             '"controller_mappings"\n{\n "controller_type" "controller_neptune"\n'
             ' "localization" { "english" { "title" "Web Browser" } }\n}\n'
         )
+        (folder / "controller_neptune_gamepad_joystick.vdf").write_text(
+            '\ufeff"controller_mappings"\n{\n "title" "#Title"\n "controller_type" "controller_neptune"\n'
+            ' "localization" { "english" { "title" "Gamepad" } }\n}\n',
+            encoding="utf-8",
+        )
 
     def configset(self, account=ALPHA):
         path = self.root / f"steamapps/common/Steam Controller Configs/{account}/config/configset_controller_neptune.vdf"
@@ -331,10 +358,12 @@ class HeliumAppTests(CliTestCase):
         self.assertEqual(cli._runtime(self.paths).current(), "0.0.0.1")
         for account in (ALPHA, BETA):
             self.assertEqual(sorted(self.configset(account)),
-                             ["disney+", "element", "hbo max", "helium", "netflix", "prime video"])
+                             ["disney+", "element", "hbo max", "helium", "netflix", "prime video", "youtube"])
+            self.assertEqual(self.configset(account).get("youtube").get("template"), "controller_neptune_gamepad_joystick.vdf")
         self.assertIn("Steam's Web Browser controller layout", self.errors)
+        self.assertIn("Gave YouTube (VacuumTube) Steam's Gamepad controller layout", self.errors)
         self.assertEqual(self.run_cli("remove", "element", "hbomax", "disneyplus", "--yes"), 0, self.errors)
-        self.assertEqual(sorted(self.configset()), ["helium", "netflix", "prime video"])
+        self.assertEqual(sorted(self.configset()), ["helium", "netflix", "prime video", "youtube"])
 
     def test_missing_layouts_are_reported_not_fatal(self):
         self.install("helium")

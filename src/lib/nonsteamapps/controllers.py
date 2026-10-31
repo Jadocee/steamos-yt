@@ -41,12 +41,15 @@ def _title(mappings: vdf.KeyValues) -> str:
 
 
 def find_templates(root: Path, title: str) -> Dict[str, str]:
-    """Map each controller type to Valve's layout file called ``title`` (in English) for it."""
+    """Map each controller type to Valve's layout file called ``title`` (in English) for it.
+
+    Where Valve has two files with one title for a controller, the plain ``_joystick`` one is chosen.
+    """
     found: Dict[str, str] = {}
     directory = templates_dir(root)
     if not directory.is_dir():
         return found
-    for path in sorted(directory.glob("*.vdf")):
+    for path in sorted(directory.glob("*.vdf"), key=lambda path: ("_joystick" not in path.name, path.name)):
         try:
             mappings = vdf.loads_text(path.read_text(encoding="utf-8", errors="replace")).get("controller_mappings")
         except (OSError, vdf.VdfError):

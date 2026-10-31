@@ -4,8 +4,9 @@ Living-room apps for SteamOS, added to the Steam library with original artwork. 
 
 | In Steam | App | Source | Good to know |
 | --- | --- | --- | --- |
-| **YouTube** | [VacuumTube](https://github.com/shy1132/VacuumTube) | `rocks.shy.VacuumTube` | YouTube's TV interface, with controller support, ad blocking and casting from the YouTube phone app. NonSteamApps turns on SponsorBlock, DeArrow and dislike counts. |
+| **YouTube** | [VacuumTube](https://github.com/shy1132/VacuumTube) | `rocks.shy.VacuumTube` | YouTube's TV interface, with controller support, ad blocking and casting from the YouTube phone app. NonSteamApps turns on SponsorBlock, DeArrow, dislike counts, the remaining-time display and HDR, hides Shorts and stops the "Continue watching?" prompt. |
 | **Element** | [Element Desktop](https://element.io) | `im.riot.Riot` | Matrix chat. A desktop interface: use the touchscreen, the trackpads or a keyboard. |
+| **Signal** | [Signal Desktop](https://signal.org/download/) | `org.signal.Signal` | Private messages and calls, linked to Signal on your phone. A desktop interface, like Element. Flathub's package is an unofficial repackaging of Signal's own release. |
 | **Jellyfin** | [Jellyfin Desktop](https://github.com/jellyfin/jellyfin-desktop) | `org.jellyfin.JellyfinDesktop` | Your Jellyfin server in its TV layout, with controller support. It plays more formats without the server converting them. |
 | **LocalSend** | [LocalSend](https://localsend.org) | `org.localsend.localsend_app` | Send files to and from nearby phones and computers over your own network, with no account and no internet needed. Received files go to `~/Downloads`. |
 | **Helium** | [Helium](https://helium.computer) | Signed Helium release | A private web browser with uBlock Origin built in, set up for a TV and a controller. |
@@ -21,7 +22,7 @@ Living-room apps for SteamOS, added to the Steam library with original artwork. 
 - **Separate sign-ins.** Each Steam account has its own data in every app except LocalSend, which has no sign-in, so its settings are shared (see [Several Steam accounts](#several-steam-accounts)).
 - **Console-ready browser apps.** Helium and the streaming apps open without first-run pages, prompts or a "Restore pages?" bubble after Steam closes them. The arrow keys move between links and buttons, the interface is dark, and in Game Mode pages are scaled for the TV (see [Helium apps](#helium-apps)).
 - **Private by default.** Helium blocks ads and trackers with its built-in uBlock Origin. NonSteamApps' Helium profiles also send Global Privacy Control and keep no crash reports (see [Privacy, security and ad blocking](#privacy-security-and-ad-blocking)).
-- **Controller layouts.** The Helium apps, Element and LocalSend get Steam's Web Browser controller layout, unless you have picked another.
+- **Controller layouts.** YouTube gets Steam's Gamepad controller layout, and the Helium apps, Element, Signal and LocalSend get its Web Browser layout, unless you have picked another.
 - **Updates.** A weekly timer updates the apps NonSteamApps installed, Helium included.
 - **Replaces SteamOS YT.** On a device with this project's earlier YouTube kiosk, its YouTube shortcut moves to VacuumTube and keeps its place in the library (see [Moving from SteamOS YT](#moving-from-steamos-yt)).
 
@@ -39,7 +40,7 @@ In Desktop Mode, open Konsole and run:
 curl -fsSL https://raw.githubusercontent.com/jadocee/steamos-yt/main/install.sh | bash
 ```
 
-This installs all nine apps. To choose, name them:
+This installs all ten apps. To choose, name them:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jadocee/steamos-yt/main/install.sh | bash -s -- youtube jellyfin
@@ -61,8 +62,9 @@ From a clone, run `./install.sh [APP...]`. Run it again at any time to update No
 
 Open them from **Library → Non-Steam** in Game Mode or in the Steam client in Desktop Mode. To quit, use the app's own exit, or press the Steam button and choose **Exit game**.
 
-- **YouTube:** controllers work out of the box. Press `Ctrl+O`, or open YouTube's settings, for VacuumTube's settings: ad blocking, SponsorBlock categories, DeArrow, dislikes, hiding Shorts, codec filters and more. To cast from a phone, choose the device in the YouTube app on the same network. In Game Mode, VacuumTube turns Chromium's sandbox off; `GAME_MODE_SANDBOX=1` keeps it on (see [Configuration](#configuration)).
+- **YouTube:** controllers work out of the box, with Steam's Gamepad layout. Press `Ctrl+O`, or open YouTube's settings, for VacuumTube's settings: ad blocking, SponsorBlock categories, DeArrow, dislikes, hiding Shorts, codec filters and more. Each Steam account's VacuumTube starts set up for a TV: no "Continue watching?" prompt, no Shorts, the time left shown while playing, and HDR allowed. HDR needs an HDR TV, Steam's HDR setting turned on, and VacuumTube running on Wayland; if colours look washed out on a screen without HDR, turn off **Wayland HDR** in VacuumTube's settings. To cast from a phone, choose the device in the YouTube app on the same network. In Game Mode, VacuumTube turns Chromium's sandbox off; `GAME_MODE_SANDBOX=1` keeps it on (see [Configuration](#configuration)).
 - **Element:** Element has no controller navigation, so it gets Steam's Web Browser controller layout, in which the trackpads work as a mouse. Use those or the touchscreen; **Steam + X** opens the on-screen keyboard. To pick another layout, use the controller icon on its library page. On a TV in Game Mode, Element is scaled like the Helium apps (`TV_SCALE`). Closing its window quits it: each Steam account's Element starts with minimising to the tray turned off, because Game Mode has no tray to bring it back from.
+- **Signal:** on its first start, link it to Signal on your phone: in the phone app, open **Settings → Linked devices** and scan the code on screen. Each Steam account links its own Signal. As with Element, it has Steam's Web Browser controller layout and the TV scale, and closing its window quits it. See [How Signal keeps its data](#how-signal-keeps-its-data).
 - **Jellyfin:** starts in its TV layout. Add your server and sign in once for each Steam account.
 - **LocalSend:** devices on the same network find each other while LocalSend is open on both.
   - **Receiving:** accept a transfer and the files land in `~/Downloads`.
@@ -82,11 +84,12 @@ Each Steam account's shortcut starts the app with `--steam-account <ID>`. NonSte
 | --- | --- |
 | YouTube | `~/.var/app/rocks.shy.VacuumTube/config/VacuumTube-steam-<ID>` |
 | Element | `~/.var/app/im.riot.Riot/config/Element-steam-<ID>` |
+| Signal | `~/.var/app/org.signal.Signal/config/Signal-steam-<ID>` |
 | Jellyfin | A Jellyfin Desktop profile named `steam-<ID>`, created on first launch |
 | LocalSend | Shared by every account: it has no sign-in, and received files go to `~/Downloads` |
 | Helium, Prime Video, HBO Max, Netflix, Disney+ | A Helium profile in `~/.local/share/nonsteamapps/profiles/<app>/<ID>` |
 
-Started from the applications menu, VacuumTube and Element use their usual data instead, and Jellyfin uses its default profile. To give every account the same data, set `PROFILE_PER_STEAM_ACCOUNT=0` in `~/.config/nonsteamapps/nonsteamapps.conf`.
+Started from the applications menu, VacuumTube, Element and Signal use their usual data instead, and Jellyfin uses its default profile. To give every account the same data, set `PROFILE_PER_STEAM_ACCOUNT=0` in `~/.config/nonsteamapps/nonsteamapps.conf`.
 
 ## Helium apps
 
@@ -153,6 +156,16 @@ To limit the risk:
 
 Element started from the applications menu keeps using the keyring.
 
+## How Signal keeps its data
+
+Flathub's Signal keeps the key to its message database in plain text by default (`SIGNAL_PASSWORD_STORE=basic`), because of database-corruption bugs with the encrypted keyrings. Game Mode has no keyring anyway, so each Steam account's Signal always uses this store, and the same profile opens in both modes.
+
+On a first start with this store, Flathub's Signal asks for confirmation, with **No**, which quits, preselected. That is easy to answer wrongly with a controller. NonSteamApps skips the question by creating the account's settings file before the first start, and shows the same note after installing instead.
+
+The key can therefore be read by anyone who can read your files. If the device is lost, unlink it from your phone under **Settings → Linked devices**.
+
+Signal started from the applications menu keeps Flathub's own defaults, including the question.
+
 ## Configuration
 
 `~/.config/nonsteamapps/nonsteamapps.conf` holds four settings:
@@ -161,7 +174,7 @@ Element started from the applications menu keeps using the keyring.
 | --- | --- | --- |
 | `PROFILE_PER_STEAM_ACCOUNT` | `1` | Separate data for each Steam account (see [Several Steam accounts](#several-steam-accounts)) |
 | `HELIUM_SERVICES` | `1` | Let Helium use its services, which deliver Widevine for the streaming apps and keep the ad blocker's filter lists current |
-| `TV_SCALE` | `auto` | Scale of the Helium apps and Element: `auto` sizes them for a TV in Game Mode, or a number such as `1.5`. Replaces `HELIUM_SCALE`, which is still read |
+| `TV_SCALE` | `auto` | Scale of the Helium apps, Element and Signal: `auto` sizes them for a TV in Game Mode, or a number such as `1.5`. Replaces `HELIUM_SCALE`, which is still read |
 | `GAME_MODE_SANDBOX` | `0` | `1` keeps Chromium's sandbox on for YouTube in Game Mode. Not yet confirmed on a Steam Deck: if YouTube then does not start, set it back to `0` |
 
 Anything you add to a shortcut's **Launch Options** in Steam after `--steam-account <ID>` is passed to the app, for example `--debug-gpu` for VacuumTube.
@@ -204,7 +217,7 @@ Installing NonSteamApps on a device with SteamOS YT, the Helium-based YouTube ki
 4. When an app starts, the launcher works out the Steam account: the shortcut's, otherwise the most recent sign-in. It then:
    - prepares that account's data (for a Helium app, its profile: preferences, a clean last exit and the shared Widevine folder);
    - logs to `~/.local/state/nonsteamapps/<app>.log`;
-   - replaces itself with `flatpak run <app> …`, or with Helium and its console flags.
+   - replaces itself with `flatpak run <app> …` (for Signal, `flatpak run --command=env …`, so that Signal's own launch script sees the account's folder), or with Helium and its console flags.
 5. For apps with a controller layout, NonSteamApps finds Valve's layout in Steam's `controller_base/templates` and records it for the shortcut in `steamapps/common/Steam Controller Configs/<ID>/config`, where Steam keeps the layout a user picks. It never replaces a layout you chose.
 6. A weekly systemd user timer runs `nonsteamapps update`. Discover updates any other Flatpaks.
 
@@ -252,9 +265,10 @@ To add an app:
 
 - [VacuumTube](https://github.com/shy1132/VacuumTube) by shy1132 and contributors, which brings YouTube's TV interface to the desktop.
 - [Element](https://github.com/element-hq/element-web), and the maintainers of its [Flathub package](https://github.com/flathub/im.riot.Riot).
+- [Signal Desktop](https://github.com/signalapp/Signal-Desktop) by Signal Messenger, and the maintainers of its unofficial [Flathub package](https://github.com/flathub/org.signal.Signal).
 - [Jellyfin Desktop](https://github.com/jellyfin/jellyfin-desktop) by the Jellyfin project.
 - [LocalSend](https://github.com/localsend/localsend) by Tien Do Nam and contributors.
 - [Helium](https://github.com/imputnet/helium) by imput, built on ungoogled-chromium.
 - [Steam ROM Manager](https://github.com/SteamGridDB/steam-rom-manager): reference for Steam's shortcut, artwork and controller conventions.
 
-NonSteamApps is not affiliated with Valve, Google, Element, the Matrix.org Foundation, the Jellyfin project, LocalSend, imput, Amazon, Warner Bros. Discovery, Netflix or The Walt Disney Company. YouTube is a trademark of Google LLC; Steam and SteamOS are trademarks of Valve Corporation; other names belong to their owners. The artwork in this repository is original.
+NonSteamApps is not affiliated with Valve, Google, Element, the Matrix.org Foundation, Signal Messenger, the Jellyfin project, LocalSend, imput, Amazon, Warner Bros. Discovery, Netflix or The Walt Disney Company. YouTube is a trademark of Google LLC; Steam and SteamOS are trademarks of Valve Corporation; other names belong to their owners. The artwork in this repository is original.

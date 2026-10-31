@@ -66,6 +66,10 @@ class FlatpakTests(unittest.TestCase):
             ],
         )
         self.assertEqual(self.flatpak.run_args("im.riot.Riot", ["--a"]), [self.fake.command, "run", "im.riot.Riot", "--a"])
+        self.assertEqual(
+            self.flatpak.run_args("org.signal.Signal", ["A=1", "signal-desktop"], ["--command=env"]),
+            [self.fake.command, "run", "--command=env", "org.signal.Signal", "A=1", "signal-desktop"],
+        )
         self.assertEqual(self.flatpak.run_quietly("im.riot.Riot", ["--b"]), 0)
         self.assertEqual(self.fake.calls()[-1], ["run", "im.riot.Riot", "--b"])
 

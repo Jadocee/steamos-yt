@@ -317,6 +317,15 @@ APPS: Tuple[App, ...] = (
         controller=WEB_BROWSER,
         logo_position="BottomLeft:44:56",
     ),
+    App(
+        id="protondb",
+        name="ProtonDB",
+        client="Helium",
+        summary="Player reports on how well games run with Proton, full screen in Helium",
+        browser=Browser(url="https://www.protondb.com/", kiosk=True),
+        controller=WEB_BROWSER,
+        logo_position="BottomLeft:44:56",
+    ),
 )
 
 

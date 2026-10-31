@@ -59,10 +59,10 @@ run "$ROOT/install.sh" --yes --no-auto-update --helium-archive "$HELIUM_ARCHIVE"
     cat "$WORK/install.log"
     exit 1
 }
-everything="Disney+ Element HBO Max Helium Jellyfin LocalSend Netflix Prime Video Signal YouTube"
-check "every app has a link to the launcher" test "$(find "$PROGRAM/apps" -type l | wc -l)" -eq 10
+everything="Disney+ Element HBO Max Helium Jellyfin LocalSend Netflix Prime Video ProtonDB Signal YouTube"
+check "every app has a link to the launcher" test "$(find "$PROGRAM/apps" -type l | wc -l)" -eq 11
 check "both accounts list every app" test "$(shortcut_names 111)|$(shortcut_names 222)" == "$everything|$everything"
-check "the artwork was copied" test "$(find "$STEAM/userdata/222/config/grid" -name '*_hero.jpg' | wc -l)" -eq 10
+check "the artwork was copied" test "$(find "$STEAM/userdata/222/config/grid" -name '*_hero.jpg' | wc -l)" -eq 11
 check "Helium was unpacked and made current" test -x "$PROGRAM/helium/current/helium-wrapper"
 check "LocalSend's port was opened in the firewall" grep -qF '"permanent": {"public": ["53317/tcp", "53317/udp"]}' "$WORK/firewall.json"
 

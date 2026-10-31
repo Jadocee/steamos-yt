@@ -184,6 +184,8 @@ The owner answered the open questions. Where these answers differ from the text 
 
 14. **LocalSend's port (owner request).** LocalSend needs incoming TCP and UDP on port 53317 [17]. SteamOS ships firewalld [18]; when it is running, the installer offers to open the port. It does this permanently and for the current boot, in every zone in use, through `sudo firewall-cmd`. This is the one step that needs the user's password, so NonSteamApps asks before running it. If `sudo` fails, for example because the account has no password, NonSteamApps prints the exact commands instead. The record notes what NonSteamApps opened, so that removing LocalSend or uninstalling closes it again, unless the app is kept. `doctor` reports the port. Re-running the installer opens the port if it is still closed. YouTube casting is left alone: VacuumTube answers on UDP 1900 and a TCP port it picks at random, so no fixed rule fits it.
 
+15. **ProtonDB (owner request).** ProtonDB runs full screen in Helium, like the streaming apps, with its own profile for each Steam account. It needs no Widevine. Its links to the Steam store, SteamDB and other sites open in new tabs, which a kiosk does not show. Valve's Web Browser layout maps the Deck's Menu button to Ctrl+W, which closes such a tab and returns to ProtonDB, and L1 and R1 go back and forward [16]. A full browser window was not needed for this.
+
 Still open: layouts NonSteamApps designs itself, and Maximum Game Resolution (the rest of migration phase 4).
 
 ## Sources

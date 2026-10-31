@@ -81,8 +81,8 @@ class Flatpak:
     def remove_unused(self) -> None:
         self._call("uninstall", "--user", "--unused", "--noninteractive", "-y", quiet=True)
 
-    def run_args(self, app_id: str, args: Sequence[str] = ()) -> List[str]:
-        return [self.command, "run", app_id, *args]
+    def run_args(self, app_id: str, args: Sequence[str] = (), options: Sequence[str] = ()) -> List[str]:
+        return [self.command, "run", *options, app_id, *args]
 
     def run_quietly(self, app_id: str, args: Sequence[str]) -> int:
         """Run the app to completion with ``args`` (for its own maintenance options) and return its status."""

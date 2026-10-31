@@ -1,18 +1,40 @@
-"""Close and restart the Steam client around changes to its library files."""
+"""Close and restart the Steam client around changes to its library files, and undo Steam's changes to an app's environment."""
 
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Iterator, MutableMapping, Optional
 
 from . import ui
 
 SHUTDOWN_TIMEOUT = 45.0
+OVERLAY_LIBRARY = "gameoverlayrenderer.so"
+
+
+def leave_steam_environment(environ: MutableMapping[str, str]) -> bool:
+    """Remove what Steam adds when it starts a game: its overlay library and the Steam Runtime's paths.
+
+    With the overlay library loaded, Chromium's sandboxed zygote crashes: Steam's loading screen stays up and
+    the app cannot be exited. Other preloaded libraries stay. Returns whether anything changed.
+    """
+    before = dict(environ)
+    kept = [entry for entry in re.split(r"[:\s]+", environ.get("LD_PRELOAD", "")) if entry and os.path.basename(entry) != OVERLAY_LIBRARY]
+    if kept:
+        environ["LD_PRELOAD"] = ":".join(kept)
+    else:
+        environ.pop("LD_PRELOAD", None)
+    for variable, original in (("LD_LIBRARY_PATH", "SYSTEM_LD_LIBRARY_PATH"), ("PATH", "SYSTEM_PATH")):
+        if environ.get(original):
+            environ[variable] = environ[original]
+        elif original in environ and variable != "PATH":
+            environ.pop(variable, None)
+    return dict(environ) != before
 
 
 def running() -> bool:

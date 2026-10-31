@@ -449,6 +449,20 @@ class HeliumAppTests(CliTestCase):
         argv, _ = self.launch("helium")
         self.assertIn("--force-device-scale-factor=1.75", argv)
 
+    def test_helium_and_flatpak_apps_start_without_steams_overlay_or_runtime(self):
+        self.install("hbomax")
+        steam = {
+            "LD_PRELOAD": "/home/deck/.local/share/Steam/ubuntu12_32/gameoverlayrenderer.so:"
+                          "/home/deck/.local/share/Steam/ubuntu12_64/gameoverlayrenderer.so",
+            "LD_LIBRARY_PATH": "/home/deck/.local/share/Steam/ubuntu12_32/steam-runtime/lib",
+            "SYSTEM_LD_LIBRARY_PATH": "",
+        }
+        for app_id in ("hbomax", "youtube"):
+            os.environ.update(steam)
+            self.launch(app_id, "--steam-account", str(ALPHA))
+            self.assertNotIn("LD_PRELOAD", os.environ, app_id)
+            self.assertNotIn("LD_LIBRARY_PATH", os.environ, app_id)
+
     def test_game_mode_scales_the_pages_for_the_tv(self):
         self.install("hbomax")
         with mock.patch("nonsteamapps.steamclient.in_game_mode", return_value=True), \

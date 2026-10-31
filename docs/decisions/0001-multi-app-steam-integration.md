@@ -186,6 +186,8 @@ The owner answered the open questions. Where these answers differ from the text 
 
 15. **ProtonDB (owner request).** ProtonDB runs full screen in Helium, like the streaming apps, with its own profile for each Steam account. It needs no Widevine. Its links to the Steam store, SteamDB and other sites open in new tabs, which a kiosk does not show. Valve's Web Browser layout maps the Deck's Menu button to Ctrl+W, which closes such a tab and returns to ProtonDB, and L1 and R1 go back and forward [16]. A full browser window was not needed for this.
 
+16. **Launch environment (bug fix).** SteamOS YT's launcher removed Steam's `LD_PRELOAD` and the Steam Runtime's paths before starting Helium. When Helium returned in item 8, the new launcher did not, and the Helium apps then hung in Game Mode: Steam's loading screen stayed up, and Exit game had no effect. Steam preloads its overlay library into every game it starts, and with it loaded Chromium's sandboxed zygote crashes [11]. Shortcuts with the overlay off still get it. The Flatpak apps were spared, because the library is outside their sandbox. Before every launch, NonSteamApps now removes the overlay library from `LD_PRELOAD`, keeping any other preloaded library. It also restores `LD_LIBRARY_PATH` and `PATH` from Steam's `SYSTEM_LD_LIBRARY_PATH` and `SYSTEM_PATH`. The Helium sandbox stays on.
+
 Still open: layouts NonSteamApps designs itself, and Maximum Game Resolution (the rest of migration phase 4).
 
 ## Sources

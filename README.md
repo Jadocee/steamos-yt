@@ -216,6 +216,7 @@ Installing NonSteamApps on a device with SteamOS YT, the Helium-based YouTube ki
 2. Each Flathub app is installed with `flatpak install --user`, unless it is already installed. The Helium apps share one signed Helium release, unpacked in `~/.local/share/nonsteamapps/helium`.
 3. Each app gets a link in `~/.local/share/nonsteamapps/apps/`, for example `apps/youtube`, pointing at the launcher. Steam's shortcut runs that link with `--steam-account <ID>`. Steam derives the shortcut's app ID from the link and the name, and NonSteamApps writes the shortcut to each account's `shortcuts.vdf`, with the artwork in the account's `grid` folder.
 4. When an app starts, the launcher works out the Steam account: the shortcut's, otherwise the most recent sign-in. It then:
+   - removes what Steam adds to a game's environment: its overlay library, which stops Helium starting in Game Mode, and the Steam Runtime's library paths;
    - prepares that account's data (for a Helium app, its profile: preferences, a clean last exit and the shared Widevine folder);
    - logs to `~/.local/state/nonsteamapps/<app>.log`;
    - replaces itself with `flatpak run <app> …` (for Signal, `flatpak run --command=env …`, so that Signal's own launch script sees the account's folder), or with Helium and its console flags.
@@ -227,6 +228,7 @@ Installing NonSteamApps on a device with SteamOS YT, the Helium-based YouTube ki
 
 - **"Steam is running in Game Mode":** switch to Desktop Mode and run the command again.
 - **An app does not start:** `nonsteamapps doctor` shows each app's last launch log; `nonsteamapps launch youtube --verbose` runs it in the terminal.
+- **A Helium app stays on Steam's loading screen in Game Mode and cannot be exited** (versions 2.2.0 to 2.8.0): run the installer again to update. Those versions let Steam's overlay library into Helium, which then never starts.
 - **A new Steam account has no shortcuts:** run `nonsteamapps steam add`.
 - **A Helium update misbehaves:** `nonsteamapps rollback` switches back to the previous version.
 - **A streaming app shows a playback error the first time:** close the app and open it again, once Widevine has downloaded. `nonsteamapps doctor` shows whether it has.

@@ -16,7 +16,7 @@ trap 'rm -rf "$WORK"' EXIT
 run() {
     env -i HOME="$HOME_DIR" PATH="$WORK/bin:$PATH" USER=deck LANG=C.UTF-8 NO_COLOR=1 NONSTEAMAPPS_ALLOW_ROOT=1 \
         FAKE_FLATPAK_STATE="$WORK/flatpak.json" FAKE_FLATPAK_LOG="$WORK/flatpak.log" FAKE_HELIUM_LOG="$WORK/helium.log" \
-        FAKE_FIREWALL_STATE="$WORK/firewall.json" "$@"
+        FAKE_FIREWALL_STATE="$WORK/firewall.json" FAKE_HELIUM_ENV_LOG="$WORK/helium-env.log" "$@"
 }
 
 check() {
@@ -78,7 +78,9 @@ run "$PROGRAM/apps/element" --steam-account 222
 check "Element's new profile quits when its window closes" grep -qF '"minimizeToTray": false' "$HOME_DIR/.var/app/im.riot.Riot/config/Element-steam-222/electron-config.json"
 run "$PROGRAM/apps/signal" --steam-account 222
 check "Signal started its own script with the account's folder" grep -qF "[\"run\", \"--command=env\", \"org.signal.Signal\", \"XDG_CONFIG_HOME=$HOME_DIR/.var/app/org.signal.Signal/config/Signal-steam-222\", \"SIGNAL_PASSWORD_STORE=basic\", \"signal-desktop\"]" "$WORK/flatpak.log"
-run "$PROGRAM/apps/primevideo" --steam-account 222
+run env LD_PRELOAD="$STEAM/ubuntu12_64/gameoverlayrenderer.so" LD_LIBRARY_PATH="$STEAM/ubuntu12_32/steam-runtime/lib" \
+    SYSTEM_LD_LIBRARY_PATH= "$PROGRAM/apps/primevideo" --steam-account 222 2>/dev/null
+check "Helium started without Steam's overlay library" grep -qxF "<unset>" "$WORK/helium-env.log"
 check "Prime Video started full screen in its own Helium profile" grep -qF "[\"--user-data-dir=$PROGRAM/profiles/primevideo/222\"" "$WORK/helium.log"
 check "Prime Video opened its site in a kiosk" grep -qE '"--kiosk".*"https://www.primevideo.com/"\]$' "$WORK/helium.log"
 check "the profile shares Helium's Widevine folder" test "$(readlink -f "$PROGRAM/profiles/primevideo/222/WidevineCdm")" == "$(readlink -f "$PROGRAM/helium/WidevineCdm")"

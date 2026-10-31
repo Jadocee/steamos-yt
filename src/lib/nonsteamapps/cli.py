@@ -420,6 +420,8 @@ def cmd_launch(argv: Sequence[str], paths: Paths, flatpak: Flatpak) -> int:
     if not verbose:
         _redirect(paths.log(app.id))
     print(f"nonsteamapps {__version__}: starting {_listing([app])} for {f'Steam account {account}' if account else 'all accounts'}")
+    if steamclient.leave_steam_environment(os.environ):
+        print("  without Steam's overlay library and Steam Runtime paths")
     if app.browser:
         return _launch_helium(paths, app, account, extra)
     if account and app.profile:

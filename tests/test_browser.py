@@ -101,15 +101,7 @@ class ProfileTests(unittest.TestCase):
         self.assertFalse((other / "WidevineCdm").is_symlink())
 
 
-class ScaleAndFlagTests(unittest.TestCase):
-    def test_auto_scale_shows_a_720p_layout_on_a_tv_in_game_mode(self):
-        self.assertEqual([browser.scale("auto", True, h) for h in (800, 1080, 1200, 1440, 2160)], [None, 1.5, 1.75, 2.0, 3.0])
-        self.assertIsNone(browser.scale("auto", False, 2160))
-        self.assertEqual(browser.scale("1.25", False), 1.25)
-        self.assertEqual(browser.scale("9", True), 4.0)
-        self.assertIsNone(browser.scale("1", True))
-        self.assertIsNone(browser.scale("big", True))
-
+class FlagTests(unittest.TestCase):
     def test_full_screen_apps_run_as_a_kiosk_with_tv_input(self):
         arguments = browser.flags(Path("/p"), "https://www.primevideo.com/", True, True, 1.5, "nonsteamapps-primevideo")
         self.assertEqual(arguments[:3], ["--user-data-dir=/p", "--class=nonsteamapps-primevideo", "--no-first-run"])

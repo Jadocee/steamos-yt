@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from . import __version__, apps, browser, config, controllers, legacy, steam, steamclient, timer, ui
+from . import __version__, apps, browser, config, controllers, display, legacy, steam, steamclient, timer, ui
 from .apps import App
 from .config import Paths, Record
 from .flatpak import Flatpak, FlatpakError, Installed
@@ -20,7 +20,9 @@ EXIT_ERROR = 1
 EXIT_INTERRUPTED = 130
 PER_ACCOUNT = "PROFILE_PER_STEAM_ACCOUNT"
 HELIUM_SERVICES = "HELIUM_SERVICES"
+TV_SCALE = "TV_SCALE"
 HELIUM_SCALE = "HELIUM_SCALE"
+GAME_MODE_SANDBOX = "GAME_MODE_SANDBOX"
 RESOLUTION_HINT = "⚙ ▸ Properties ▸ Shortcut ▸ Maximum Game Resolution ▸ Native"
 
 
@@ -325,11 +327,16 @@ def _redirect(log: Path) -> None:
     os.close(descriptor)
 
 
+def _scale_setting(settings: Dict[str, str]) -> str:
+    return settings.get(TV_SCALE) or settings.get(HELIUM_SCALE) or "auto"
+
+
 def cmd_launch(argv: Sequence[str], paths: Paths, flatpak: Flatpak) -> int:
     app_id, hint, verbose, extra = _parse_launch(argv)
     app = _choose([app_id])[0]
+    settings = config.read_settings(paths.settings)
     account = None
-    if config.enabled(config.read_settings(paths.settings).get(PER_ACCOUNT), default=True):
+    if config.enabled(settings.get(PER_ACCOUNT), default=True):
         account = steam.launch_account(_steam_root(), hint)
     paths.state.mkdir(parents=True, exist_ok=True)
     if not verbose:
@@ -344,7 +351,14 @@ def cmd_launch(argv: Sequence[str], paths: Paths, flatpak: Flatpak) -> int:
             account = None
     if not account and app.profile:
         app.profile.prepare_shared(app.home(paths.home))
-    command = flatpak.run_args(app.flatpak, [*app.arguments(paths.home, account), *extra])
+    factor = display.scale(_scale_setting(settings), steamclient.in_game_mode()) if app.tv_scale else None
+    scale = [f"--force-device-scale-factor={factor:g}"] if factor else []
+    command = flatpak.run_args(app.flatpak, [*app.arguments(paths.home, account), *scale, *extra])
+    hidden = [variable for variable in app.sandbox_off_when if variable in os.environ]
+    if hidden and config.enabled(settings.get(GAME_MODE_SANDBOX)):
+        for variable in hidden:
+            del os.environ[variable]
+        print(f"  keeping {app.client}'s sandbox on: hid {', '.join(hidden)} ({GAME_MODE_SANDBOX}=1)")
     print("  " + " ".join(command), flush=True)
     os.execvp(command[0], command)
     return EXIT_ERROR
@@ -358,7 +372,7 @@ def _launch_helium(paths: Paths, app: App, account: Optional[int], extra: Sequen
     game_mode = steamclient.in_game_mode()
     profile = paths.profile(app.id, account)
     browser.prepare(profile, config.enabled(settings.get(HELIUM_SERVICES), default=True), app.browser.kiosk, runtime.widevine)
-    factor = browser.scale(settings.get(HELIUM_SCALE, "auto"), game_mode)
+    factor = display.scale(_scale_setting(settings), game_mode)
     command = [
         str(runtime.executable),
         *browser.flags(profile, app.browser.url, app.browser.kiosk, game_mode, factor, f"nonsteamapps-{app.id}"),
@@ -464,7 +478,7 @@ def _helium_status(paths: Paths, settings: Dict[str, str]) -> str:
     services = "on" if config.enabled(settings.get(HELIUM_SERVICES), default=True) else "off"
     widevine = "downloaded" if any(runtime.widevine.glob("*/manifest.json")) else "not downloaded yet"
     return (f"{current}" + (f" (also {', '.join(others)})" if others else "")
-            + f"; services {services}; Widevine {widevine}; scale {settings.get(HELIUM_SCALE) or 'auto'}")
+            + f"; services {services}; Widevine {widevine}")
 
 
 def cmd_doctor(args, paths: Paths, flatpak: Flatpak) -> int:
@@ -485,6 +499,7 @@ def cmd_doctor(args, paths: Paths, flatpak: Flatpak) -> int:
         ("Python", platform.python_version()),
         ("Flatpak", "available" if flatpak.available() else "not installed"),
         ("Helium", _helium_status(paths, settings)),
+        ("TV scale", f"{_scale_setting(settings)} (Helium apps and Element)"),
         ("Updates", timer.status(paths)),
     ]
     root = _steam_root()

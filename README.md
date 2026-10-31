@@ -61,8 +61,8 @@ From a clone, run `./install.sh [APP...]`. Run it again at any time to update No
 
 Open them from **Library → Non-Steam** in Game Mode or in the Steam client in Desktop Mode. To quit, use the app's own exit, or press the Steam button and choose **Exit game**.
 
-- **YouTube:** controllers work out of the box. Press `Ctrl+O`, or open YouTube's settings, for VacuumTube's settings: ad blocking, SponsorBlock categories, DeArrow, dislikes, hiding Shorts, codec filters and more. To cast from a phone, choose the device in the YouTube app on the same network.
-- **Element:** Element has no controller navigation, so it gets Steam's Web Browser controller layout, in which the trackpads work as a mouse. Use those or the touchscreen; **Steam + X** opens the on-screen keyboard. To pick another layout, use the controller icon on its library page.
+- **YouTube:** controllers work out of the box. Press `Ctrl+O`, or open YouTube's settings, for VacuumTube's settings: ad blocking, SponsorBlock categories, DeArrow, dislikes, hiding Shorts, codec filters and more. To cast from a phone, choose the device in the YouTube app on the same network. In Game Mode, VacuumTube turns Chromium's sandbox off; `GAME_MODE_SANDBOX=1` keeps it on (see [Configuration](#configuration)).
+- **Element:** Element has no controller navigation, so it gets Steam's Web Browser controller layout, in which the trackpads work as a mouse. Use those or the touchscreen; **Steam + X** opens the on-screen keyboard. To pick another layout, use the controller icon on its library page. On a TV in Game Mode, Element is scaled like the Helium apps (`TV_SCALE`). Closing its window quits it: each Steam account's Element starts with minimising to the tray turned off, because Game Mode has no tray to bring it back from.
 - **Jellyfin:** starts in its TV layout. Add your server and sign in once for each Steam account.
 - **LocalSend:** devices on the same network find each other while LocalSend is open on both.
   - **Receiving:** accept a transfer and the files land in `~/Downloads`.
@@ -101,7 +101,7 @@ Each app has its own Helium profile for each Steam account, so signing in to one
 - **Fewer prompts:** sites cannot ask to send notifications. The streaming apps also turn off translation, password and address saving, and permission prompts.
 - **Navigation:** the arrow keys move between links and buttons, as on a TV (Chromium's spatial navigation).
 - **Dark:** Helium's interface is dark, and so are sites that offer a dark theme. In the Helium app, **Settings → Appearance → Mode** switches back to light.
-- **Scale:** in Game Mode, pages are scaled so a TV shows a 720p-sized layout (1.5× at 1080p, 3× at 4K). Set `HELIUM_SCALE` to choose a fixed scale.
+- **Scale:** in Game Mode, pages are scaled so a TV shows a 720p-sized layout (1.5× at 1080p, 3× at 4K). Set `TV_SCALE` to choose a fixed scale.
 - **Video:** decoding uses the graphics chip (VA-API), and video plays without waiting for a click.
 - **Controllers:** the apps get Steam's Web Browser controller layout. The trackpads work as a mouse and scroll wheel, and **Steam + X** opens the on-screen keyboard. Change it under the controller icon on the app's library page.
 
@@ -155,13 +155,14 @@ Element started from the applications menu keeps using the keyring.
 
 ## Configuration
 
-`~/.config/nonsteamapps/nonsteamapps.conf` holds three settings:
+`~/.config/nonsteamapps/nonsteamapps.conf` holds four settings:
 
 | Setting | Default | Effect |
 | --- | --- | --- |
 | `PROFILE_PER_STEAM_ACCOUNT` | `1` | Separate data for each Steam account (see [Several Steam accounts](#several-steam-accounts)) |
 | `HELIUM_SERVICES` | `1` | Let Helium use its services, which deliver Widevine for the streaming apps and keep the ad blocker's filter lists current |
-| `HELIUM_SCALE` | `auto` | Scale of the Helium apps: `auto` sizes pages for a TV in Game Mode, or a number such as `1.5` |
+| `TV_SCALE` | `auto` | Scale of the Helium apps and Element: `auto` sizes them for a TV in Game Mode, or a number such as `1.5`. Replaces `HELIUM_SCALE`, which is still read |
+| `GAME_MODE_SANDBOX` | `0` | `1` keeps Chromium's sandbox on for YouTube in Game Mode. Not yet confirmed on a Steam Deck: if YouTube then does not start, set it back to `0` |
 
 Anything you add to a shortcut's **Launch Options** in Steam after `--steam-account <ID>` is passed to the app, for example `--debug-gpu` for VacuumTube.
 
@@ -215,6 +216,7 @@ Installing NonSteamApps on a device with SteamOS YT, the Helium-based YouTube ki
 - **A Helium update misbehaves:** `nonsteamapps rollback` switches back to the previous version.
 - **A streaming app shows a playback error the first time:** close the app and open it again, once Widevine has downloaded. `nonsteamapps doctor` shows whether it has.
 - **The picture looks soft on a TV:** see [On a TV](#on-a-tv-use-its-full-resolution).
+- **YouTube does not start in Game Mode after setting `GAME_MODE_SANDBOX=1`:** set it back to `0`.
 
 ## Development
 
@@ -229,7 +231,7 @@ node tools/render-artwork.js [APP...]          # render assets/src/<app> into as
 | --- | --- |
 | `install.sh`, `uninstall.sh` | Entry points (work from a clone or through `curl … \| bash`) |
 | `src/bin/nonsteamapps` | Launcher: runs the command-line interface, or starts an app when called through its link |
-| `src/lib/nonsteamapps/` | Python standard-library package: `apps.py` (the apps), `flatpak.py`, `helium.py` (the signed Helium release), `browser.py` (console profiles and flags), `controllers.py` (Steam layouts), `steam.py` and `vdf.py` (shortcuts and artwork), `steamclient.py`, `legacy.py` (SteamOS YT), `cli.py` |
+| `src/lib/nonsteamapps/` | Python standard-library package: `apps.py` (the apps), `flatpak.py`, `helium.py` (the signed Helium release), `browser.py` (console profiles and flags), `display.py` (TV scale), `controllers.py` (Steam layouts), `steam.py` and `vdf.py` (shortcuts and artwork), `steamclient.py`, `legacy.py` (SteamOS YT), `cli.py` |
 | `src/share/` | Default settings, the update timer and Helium's public signing key (fingerprint `BE67 7C19 89D3 5EAB 2C5F 26C9 3516 01AD 01D6 378E`) |
 | `assets/src/<app>`, `assets/artwork/<app>` | SVG sources and rendered Steam artwork |
 | `tests/fakes/flatpak` | Stand-in for `flatpak`, used by the tests; `tests/_fakes.py` also builds a stand-in Helium release |

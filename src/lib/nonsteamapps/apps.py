@@ -11,6 +11,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 RunApp = Callable[[Sequence[str]], int]
 _STEAM_PROFILE = re.compile(r"steam-\d+\Z")
 VACUUMTUBE_DEFAULTS = {"sponsorblock": True, "dearrow": True, "dislikes": True}
+ELEMENT_DEFAULTS = {"minimizeToTray": False}
 
 
 @dataclass(frozen=True)
@@ -121,7 +122,10 @@ class Browser:
 class App:
     """An app NonSteamApps installs: from Flathub (``flatpak``) or in its own Helium (``browser``).
 
-    ``controller`` names one of Valve's controller layouts to give the shortcut.
+    ``controller`` names one of Valve's controller layouts to give the shortcut. ``tv_scale`` scales an
+    Electron app for a TV in Game Mode, as the Helium apps always are. ``sandbox_off_when`` names
+    environment variables that make the app turn Chromium's sandbox off; the launcher hides them when
+    the user chooses to keep the sandbox.
     """
 
     id: str
@@ -135,6 +139,8 @@ class App:
     controller: str = ""
     logo_position: str = "BottomLeft:42:58"
     legacy_exes: Tuple[str, ...] = ()
+    tv_scale: bool = False
+    sandbox_off_when: Tuple[str, ...] = ()
 
     def home(self, user_home: Path) -> Path:
         """The app's own folder, which Flatpak keeps in ``~/.var/app``."""
@@ -160,6 +166,7 @@ APPS: Tuple[App, ...] = (
             defaults=(("config.json", json.dumps(VACUUMTUBE_DEFAULTS, indent=4) + "\n"),),
         ),
         legacy_exes=("~/.local/share/steamos-yt/bin/steamos-yt",),
+        sandbox_off_when=("SteamGamepadUI",),
     ),
     App(
         id="element",
@@ -169,8 +176,13 @@ APPS: Tuple[App, ...] = (
         summary="Secure chat on Matrix",
         args=("--password-store=basic", "--storage-mode=allow-plaintext"),
         controller=WEB_BROWSER,
-        profile=FolderProfile("config/Element-steam-{account}", "--profile=steam-{account}"),
+        profile=FolderProfile(
+            "config/Element-steam-{account}",
+            "--profile=steam-{account}",
+            defaults=(("electron-config.json", json.dumps(ELEMENT_DEFAULTS, indent=4) + "\n"),),
+        ),
         logo_position="BottomLeft:44:56",
+        tv_scale=True,
     ),
     App(
         id="jellyfin",

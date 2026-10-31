@@ -17,9 +17,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
-import shutil
-import subprocess
 from pathlib import Path
 from typing import List, Optional
 
@@ -29,9 +26,7 @@ BLOCK = 2
 SCHEMA_VERSION = 1
 CRASH_REPORTS_OFF = -1
 FEATURES = "AcceleratedVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxZeroCopyGL"
-TV_HEIGHT = 720
 BROWSER_BINARIES = ("helium", "chrome", "chromium")
-_SCREEN = re.compile(r"current (\d+) x (\d+)")
 
 
 def deep_merge(base: dict, overlay: dict) -> dict:
@@ -147,36 +142,6 @@ def prepare(profile: Path, services: bool, kiosk: bool, widevine: Path) -> None:
     write_local_state(profile)
     clear_stale_lock(profile)
     link_widevine(profile, widevine)
-
-
-def screen_height() -> Optional[int]:
-    if not os.environ.get("DISPLAY") or not shutil.which("xrandr"):
-        return None
-    try:
-        output = subprocess.run(
-            ["xrandr", "--current"], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=5, check=False
-        ).stdout
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    match = _SCREEN.search(output)
-    return int(match.group(2)) if match else None
-
-
-def scale(setting: str, game_mode: bool, height: Optional[int] = None) -> Optional[float]:
-    """The interface scale: a number from the settings, or in Game Mode one that shows a 720p-sized layout."""
-    value = (setting or "auto").strip().lower()
-    if value != "auto":
-        try:
-            number = float(value)
-        except ValueError:
-            return None
-        return min(max(number, 0.5), 4.0) if number != 1 else None
-    if not game_mode:
-        return None
-    height = screen_height() if height is None else height
-    if not height or height < 1000:
-        return None
-    return round(height / TV_HEIGHT * 4) / 4
 
 
 def flags(profile: Path, url: str, kiosk: bool, game_mode: bool, factor: Optional[float], name: str) -> List[str]:

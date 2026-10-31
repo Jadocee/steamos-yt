@@ -182,6 +182,8 @@ The owner answered the open questions. Where these answers differ from the text 
     - **Bug fix:** reading Valve's current templates [16] showed that most of them begin with a UTF-8 byte-order mark. The text VDF reader took the mark for a stray token and skipped those files, among them the Deck's Gamepad layouts. The reader now ignores the mark. The Web Browser template has no mark, which is why it already worked.
     - **The new Steam Controller** has no template of its own in Steam's files yet, so it keeps Steam's default layout. When Valve adds one titled "Gamepad", the next install or repair picks it up.
 
+14. **LocalSend's port (owner request).** LocalSend needs incoming TCP and UDP on port 53317 [17]. SteamOS ships firewalld [18]; when it is running, the installer offers to open the port. It does this permanently and for the current boot, in every zone in use, through `sudo firewall-cmd`. This is the one step that needs the user's password, so NonSteamApps asks before running it. If `sudo` fails, for example because the account has no password, NonSteamApps prints the exact commands instead. The record notes what NonSteamApps opened, so that removing LocalSend or uninstalling closes it again, unless the app is kept. `doctor` reports the port. Re-running the installer opens the port if it is still closed. YouTube casting is left alone: VacuumTube answers on UDP 1900 and a TCP port it picks at random, so no fixed rule fits it.
+
 Still open: layouts NonSteamApps designs itself, and Maximum Game Resolution (the rest of migration phase 4).
 
 ## Sources
@@ -202,3 +204,5 @@ Still open: layouts NonSteamApps designs itself, and Maximum Game Resolution (th
 14. [Signal Desktop](https://github.com/signalapp/Signal-Desktop): `app/user_config.main.ts` for the data folder, `app/main.main.ts` for `getSQLKey` and key-store changes, and `ts/types/Settings.std.ts` for the tray default
 15. [Flatpak](https://github.com/flatpak/flatpak): `common/flatpak-run.c`, which applies `--env` first, and `common/flatpak-context.c` (`flatpak_context_apply_env_appid`)
 16. [SteamTracking](https://github.com/SteamDatabase/SteamTracking): `ClientExtracted/controller_base/templates`, the Steam client's controller layouts, as of 29 October 2026
+17. [LocalSend README](https://github.com/localsend/localsend#setup), "Setup": incoming TCP and UDP on 53317, and the `firewall-cmd` commands
+18. [Steam Community: "Please include a firewall"](https://steamcommunity.com/app/1675200/discussions/2/3416557114749187579/), on firewalld arriving with SteamOS 3.5

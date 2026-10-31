@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from . import __version__, apps, browser, config, controllers, display, legacy, steam, steamclient, timer, ui
 from .apps import App
 from .config import Paths, Record
+from .firewall import Firewall, FirewallError
 from .flatpak import Flatpak, FlatpakError, Installed
 from .helium import HeliumError, Runtime
 
@@ -54,6 +55,77 @@ def _listing(chosen: Sequence[App]) -> str:
 
 def _runtime(paths: Paths) -> Runtime:
     return Runtime(paths.helium, paths.helium_key)
+
+
+def _firewall() -> Firewall:
+    return Firewall()
+
+
+def _describe_ports(ports: Sequence[str]) -> str:
+    protocols: Dict[str, List[str]] = {}
+    for port in ports:
+        number, _, protocol = port.partition("/")
+        protocols.setdefault(number, []).append(protocol.upper())
+    return ", ".join(f"{number} ({' and '.join(names)})" for number, names in protocols.items())
+
+
+def _open_ports(record: Record, chosen: Sequence[App]) -> None:
+    """Let other devices reach the apps that need it, when SteamOS's firewall is running."""
+    wanted = [app for app in chosen if app.ports]
+    wall = _firewall()
+    if not wanted or not wall.running():
+        return
+    for app in wanted:
+        closed = wall.closed(app.ports)
+        if not closed:
+            continue
+        ports = _describe_ports(app.ports)
+        if not ui.confirm(f"Open port {ports} in the firewall, so other devices can reach {app.client}? sudo asks for your password", default=True):
+            ui.info(f"{app.client} cannot be reached while the firewall blocks port {ports}; to open it, run the installer again")
+            continue
+        try:
+            wall.change("add", closed)
+        except FirewallError as error:
+            ui.warn(f"Could not open port {ports} for {app.client} ({error}). If your account has no password, set one with passwd and run the installer again, or run:")
+            for command in error.commands:
+                ui.info(f"  {command}")
+            continue
+        opened = record.opened_ports(app.id)
+        for zone, found in closed.items():
+            opened[zone] = sorted(set(opened.get(zone, [])) | set(found))
+        record.set_opened_ports(app.id, opened)
+        ui.ok(f"Opened port {ports} in the firewall for {app.client}")
+
+
+def _close_ports(record: Record, chosen: Sequence[App]) -> None:
+    """Close the firewall ports NonSteamApps opened for these apps."""
+    for app in chosen:
+        opened = record.opened_ports(app.id)
+        if not opened:
+            continue
+        ports = _describe_ports(sorted({port for found in opened.values() for port in found}))
+        try:
+            _firewall().change("remove", opened)
+        except FirewallError as error:
+            ui.warn(f"Could not close port {ports}, which NonSteamApps opened for {app.client} ({error}); to close it, run:")
+            for command in error.commands:
+                ui.info(f"  {command}")
+        else:
+            ui.ok(f"Closed port {ports}, which NonSteamApps opened for {app.client}")
+        record.set_opened_ports(app.id, {})
+
+
+def _firewall_status(record: Record) -> str:
+    wall = _firewall()
+    if not wall.running():
+        return "not running"
+    found = []
+    for app in apps.APPS:
+        if app.ports and app.id in record.apps:
+            closed = wall.closed(app.ports)
+            state = "open" if not closed else f"closed in {', '.join(closed)}; run the installer again to open it"
+            found.append(f"{app.client}'s port {_describe_ports(app.ports)} {state}")
+    return "; ".join(["firewalld running", *found])
 
 
 def _steam_root() -> Optional[Path]:
@@ -251,6 +323,8 @@ def cmd_install(args, paths: Paths, flatpak: Flatpak) -> int:
     for app in chosen:
         _install_app(paths, flatpak, record, app, installed.get(app.flatpak))
         record.save()
+    _open_ports(record, chosen)
+    record.save()
 
     if args.auto_update:
         timer.install(paths)
@@ -286,6 +360,7 @@ def cmd_remove(args, paths: Paths, flatpak: Flatpak) -> int:
         if args.purge:
             _purge(paths, app)
     if not args.keep_app:
+        _close_ports(record, chosen)
         _uninstall_flatpaks(flatpak, record, chosen)
     for app in chosen:
         record.discard(app.id)
@@ -502,6 +577,7 @@ def cmd_doctor(args, paths: Paths, flatpak: Flatpak) -> int:
         ("Python", platform.python_version()),
         ("Flatpak", "available" if flatpak.available() else "not installed"),
         ("Helium", _helium_status(paths, settings)),
+        ("Firewall", _firewall_status(Record.load(paths.record))),
         ("TV scale", f"{_scale_setting(settings)} (Helium apps, {' and '.join(app.name for app in apps.APPS if app.tv_scale)})"),
         ("Updates", timer.status(paths)),
     ]
@@ -555,6 +631,7 @@ def cmd_uninstall(args, paths: Paths, flatpak: Flatpak) -> int:
         for app in managed:
             _purge(paths, app)
     if not args.keep_apps:
+        _close_ports(record, managed)
         _uninstall_flatpaks(flatpak, record, managed)
     timer.remove(paths)
     shutil.rmtree(paths.state, ignore_errors=True)

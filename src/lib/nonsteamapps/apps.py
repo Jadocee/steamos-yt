@@ -166,7 +166,8 @@ class App:
     ``controller`` names one of Valve's controller layouts to give the shortcut. ``tv_scale`` scales an
     Electron app for a TV in Game Mode, as the Helium apps always are. ``sandbox_off_when`` names
     environment variables that make the app turn Chromium's sandbox off; the launcher hides them when
-    the user chooses to keep the sandbox. ``notice`` is shown after installing.
+    the user chooses to keep the sandbox. ``notice`` is shown after installing. ``ports`` are opened in
+    the firewall, when one is running, so other devices can reach the app.
     """
 
     id: str
@@ -183,6 +184,7 @@ class App:
     tv_scale: bool = False
     sandbox_off_when: Tuple[str, ...] = ()
     notice: str = ""
+    ports: Tuple[str, ...] = ()
 
     def home(self, user_home: Path) -> Path:
         """The app's own folder, which Flatpak keeps in ``~/.var/app``."""
@@ -268,6 +270,7 @@ APPS: Tuple[App, ...] = (
         summary="Send files to and from nearby phones and computers over your own network",
         controller=WEB_BROWSER,
         logo_position="BottomLeft:44:56",
+        ports=("53317/tcp", "53317/udp"),
     ),
     App(
         id="helium",

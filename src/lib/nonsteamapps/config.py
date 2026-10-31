@@ -161,7 +161,7 @@ def set_setting(path: Path, key: str, value: str) -> None:
 
 
 class Record:
-    """Which apps NonSteamApps manages, and whether it installed each app's Flatpak."""
+    """Which apps NonSteamApps manages, whether it installed each app's Flatpak, and the ports it opened for each."""
 
     def __init__(self, path: Path, apps: Optional[Dict[str, dict]] = None) -> None:
         self.path = Path(path)
@@ -185,7 +185,20 @@ class Record:
         return bool(self.apps.get(app_id, {}).get("installed_flatpak"))
 
     def add(self, app_id: str, installed_flatpak: bool) -> None:
-        self.apps[app_id] = {"installed_flatpak": installed_flatpak or self.owns_flatpak(app_id)}
+        entry = self.apps.setdefault(app_id, {})
+        entry["installed_flatpak"] = installed_flatpak or bool(entry.get("installed_flatpak"))
+
+    def opened_ports(self, app_id: str) -> Dict[str, List[str]]:
+        """Firewall ports NonSteamApps opened for the app, by zone."""
+        ports = self.apps.get(app_id, {}).get("opened_ports")
+        return {zone: list(found) for zone, found in ports.items()} if isinstance(ports, dict) else {}
+
+    def set_opened_ports(self, app_id: str, ports: Dict[str, List[str]]) -> None:
+        entry = self.apps.setdefault(app_id, {})
+        if ports:
+            entry["opened_ports"] = ports
+        else:
+            entry.pop("opened_ports", None)
 
     def discard(self, app_id: str) -> None:
         self.apps.pop(app_id, None)

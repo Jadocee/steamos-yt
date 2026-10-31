@@ -10,7 +10,16 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 RunApp = Callable[[Sequence[str]], int]
 _STEAM_PROFILE = re.compile(r"steam-\d+\Z")
-VACUUMTUBE_DEFAULTS = {"sponsorblock": True, "dearrow": True, "dislikes": True}
+VACUUMTUBE_DEFAULTS = {
+    "sponsorblock": True,
+    "dearrow": True,
+    "dislikes": True,
+    "block_continue_watching": True,
+    "hide_shorts": True,
+    "features_enabled": True,
+    "remaining_time_feature": True,
+    "wayland_hdr": True,
+}
 ELEMENT_DEFAULTS = {"minimizeToTray": False}
 
 
@@ -139,6 +148,7 @@ class JellyfinProfile:
 
 Profile = Union[FolderProfile, ScriptProfile, JellyfinProfile]
 WEB_BROWSER = "Web Browser"
+GAMEPAD = "Gamepad"
 
 
 @dataclass(frozen=True)
@@ -202,6 +212,7 @@ APPS: Tuple[App, ...] = (
             shared="config/VacuumTube",
             defaults=(("config.json", json.dumps(VACUUMTUBE_DEFAULTS, indent=4) + "\n"),),
         ),
+        controller=GAMEPAD,
         legacy_exes=("~/.local/share/steamos-yt/bin/steamos-yt",),
         sandbox_off_when=("SteamGamepadUI",),
     ),

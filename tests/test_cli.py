@@ -342,6 +342,11 @@ class HeliumAppTests(CliTestCase):
             '"controller_mappings"\n{\n "controller_type" "controller_neptune"\n'
             ' "localization" { "english" { "title" "Web Browser" } }\n}\n'
         )
+        (folder / "controller_neptune_gamepad_joystick.vdf").write_text(
+            '\ufeff"controller_mappings"\n{\n "title" "#Title"\n "controller_type" "controller_neptune"\n'
+            ' "localization" { "english" { "title" "Gamepad" } }\n}\n',
+            encoding="utf-8",
+        )
 
     def configset(self, account=ALPHA):
         path = self.root / f"steamapps/common/Steam Controller Configs/{account}/config/configset_controller_neptune.vdf"
@@ -353,10 +358,12 @@ class HeliumAppTests(CliTestCase):
         self.assertEqual(cli._runtime(self.paths).current(), "0.0.0.1")
         for account in (ALPHA, BETA):
             self.assertEqual(sorted(self.configset(account)),
-                             ["disney+", "element", "hbo max", "helium", "netflix", "prime video"])
+                             ["disney+", "element", "hbo max", "helium", "netflix", "prime video", "youtube"])
+            self.assertEqual(self.configset(account).get("youtube").get("template"), "controller_neptune_gamepad_joystick.vdf")
         self.assertIn("Steam's Web Browser controller layout", self.errors)
+        self.assertIn("Gave YouTube (VacuumTube) Steam's Gamepad controller layout", self.errors)
         self.assertEqual(self.run_cli("remove", "element", "hbomax", "disneyplus", "--yes"), 0, self.errors)
-        self.assertEqual(sorted(self.configset()), ["helium", "netflix", "prime video"])
+        self.assertEqual(sorted(self.configset()), ["helium", "netflix", "prime video", "youtube"])
 
     def test_missing_layouts_are_reported_not_fatal(self):
         self.install("helium")

@@ -148,6 +148,10 @@ class TextVdfTests(unittest.TestCase):
         self.assertEqual(first.get("mostrecent"), "1")
         self.assertEqual(users.get("76561198000000000").get("Timestamp"), "1761000000")
 
+    def test_a_byte_order_mark_is_ignored(self):
+        root = vdf.loads_text('\ufeff"controller_mappings"\n{\n\t"title"\t"#Title"\n}\n')
+        self.assertEqual(root.get("controller_mappings").get("title"), "#Title")
+
     def test_unbalanced_braces_raise(self):
         with self.assertRaises(vdf.VdfError):
             vdf.loads_text('"a" { "b" "c"')

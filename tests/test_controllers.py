@@ -31,6 +31,17 @@ class ControllerTests(unittest.TestCase):
         path = controllers.config_dir(self.root, ACCOUNT) / f"configset_{kind}.vdf"
         return vdf.loads_text(path.read_text()).get("controller_config")
 
+    def test_reads_valves_byte_order_mark_and_prefers_the_plain_joystick_file(self):
+        templates = controllers.templates_dir(self.root)
+        (templates / "controller_neptune_gamepad_joystick.vdf").write_text("\ufeff" + template("controller_neptune", "Gamepad"), encoding="utf-8")
+        (templates / "controller_xboxone_gamepad_fps.vdf").write_text(template("controller_xboxone", "Gamepad"))
+        (templates / "controller_xboxone_gamepad_joystick.vdf").write_text(template("controller_xboxone", "Gamepad"))
+        (templates / "controller_neptune_gamepad.vdf").unlink()
+        self.assertEqual(
+            controllers.find_templates(self.root, "Gamepad"),
+            {"controller_neptune": "controller_neptune_gamepad_joystick.vdf", "controller_xboxone": "controller_xboxone_gamepad_joystick.vdf"},
+        )
+
     def test_finds_valves_layout_by_title_for_each_controller(self):
         self.assertEqual(
             controllers.find_templates(self.root, "web browser"),

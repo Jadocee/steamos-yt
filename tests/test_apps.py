@@ -55,9 +55,11 @@ class ArgumentTests(unittest.TestCase):
             self.assertEqual((app.flatpak, app.client, app.browser.url, app.browser.kiosk), ("", "Helium", url, kiosk))
             self.assertEqual(app.controller, apps.WEB_BROWSER)
         self.assertEqual(
-            [app.id for app in apps.APPS if app.controller],
+            [app.id for app in apps.APPS if app.controller == apps.WEB_BROWSER],
             ["element", "signal", "localsend", "helium", "primevideo", "hbomax", "netflix", "disneyplus"],
         )
+        self.assertEqual([app.id for app in apps.APPS if app.controller == apps.GAMEPAD], ["youtube"])
+        self.assertEqual([app.id for app in apps.APPS if not app.controller], ["jellyfin"])
 
     def test_element_scales_for_a_tv_and_vacuumtube_can_keep_its_sandbox(self):
         self.assertEqual([app.id for app in apps.APPS if app.tv_scale], ["element", "signal"])
@@ -105,12 +107,24 @@ class ProfileTests(unittest.TestCase):
             ["VacuumTube-steam-111", "VacuumTube-steam-222"],
         )
 
-    def test_new_vacuumtube_folders_turn_on_sponsorblock_dearrow_and_dislikes(self):
+    def test_new_vacuumtube_folders_start_set_up_for_a_tv(self):
         youtube = apps.by_id("youtube")
         app_home = youtube.home(self.home)
         youtube.profile.prepare(app_home, 111, lambda options: 0)
         settings = app_home / "config/VacuumTube-steam-111/config.json"
-        self.assertEqual(json.loads(settings.read_text()), {"sponsorblock": True, "dearrow": True, "dislikes": True})
+        self.assertEqual(
+            json.loads(settings.read_text()),
+            {
+                "sponsorblock": True,
+                "dearrow": True,
+                "dislikes": True,
+                "block_continue_watching": True,
+                "hide_shorts": True,
+                "features_enabled": True,
+                "remaining_time_feature": True,
+                "wayland_hdr": True,
+            },
+        )
         settings.write_text('{"sponsorblock": false}')
         youtube.profile.prepare(app_home, 111, lambda options: 0)
         self.assertEqual(json.loads(settings.read_text()), {"sponsorblock": False})

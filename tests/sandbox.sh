@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # End-to-end check of the shipped scripts in a throwaway home: install.sh with a
-# fake flatpak, a stand-in Helium release and two Steam accounts, launches
-# through the links Steam runs, and uninstall.sh. Needs bash, python3 and xz.
+# fake flatpak, a running fake firewall, a stand-in Helium release and two Steam
+# accounts, launches through the links Steam runs, and uninstall.sh. Needs bash,
+# python3 and xz.
 set -Eeuo pipefail
 
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
@@ -14,7 +15,8 @@ trap 'rm -rf "$WORK"' EXIT
 
 run() {
     env -i HOME="$HOME_DIR" PATH="$WORK/bin:$PATH" USER=deck LANG=C.UTF-8 NO_COLOR=1 NONSTEAMAPPS_ALLOW_ROOT=1 \
-        FAKE_FLATPAK_STATE="$WORK/flatpak.json" FAKE_FLATPAK_LOG="$WORK/flatpak.log" FAKE_HELIUM_LOG="$WORK/helium.log" "$@"
+        FAKE_FLATPAK_STATE="$WORK/flatpak.json" FAKE_FLATPAK_LOG="$WORK/flatpak.log" FAKE_HELIUM_LOG="$WORK/helium.log" \
+        FAKE_FIREWALL_STATE="$WORK/firewall.json" "$@"
 }
 
 check() {
@@ -42,6 +44,9 @@ EOF
 
 mkdir -p "$WORK/bin" "$STEAM/userdata/111/config" "$STEAM/userdata/222/config" "$STEAM/config"
 ln -s "$ROOT/tests/fakes/flatpak" "$WORK/bin/flatpak"
+ln -s "$ROOT/tests/fakes/firewall-cmd" "$WORK/bin/firewall-cmd"
+ln -s "$ROOT/tests/fakes/sudo" "$WORK/bin/sudo"
+echo '{"running": true, "default": "public", "active": ["public"], "runtime": {}, "permanent": {}}' >"$WORK/firewall.json"
 printf '%s\n' '"users"' '{' \
     '  "76561197960265839" { "AccountName" "alpha" "PersonaName" "Alpha" "MostRecent" "1" }' \
     '  "76561197960265950" { "AccountName" "beta" "PersonaName" "Beta" "MostRecent" "0" }' \
@@ -54,11 +59,12 @@ run "$ROOT/install.sh" --yes --no-auto-update --helium-archive "$HELIUM_ARCHIVE"
     cat "$WORK/install.log"
     exit 1
 }
-everything="Disney+ Element HBO Max Helium Jellyfin LocalSend Netflix Prime Video Signal YouTube"
-check "every app has a link to the launcher" test "$(find "$PROGRAM/apps" -type l | wc -l)" -eq 10
+everything="Disney+ Element HBO Max Helium Jellyfin LocalSend Netflix Prime Video ProtonDB Signal YouTube"
+check "every app has a link to the launcher" test "$(find "$PROGRAM/apps" -type l | wc -l)" -eq 11
 check "both accounts list every app" test "$(shortcut_names 111)|$(shortcut_names 222)" == "$everything|$everything"
-check "the artwork was copied" test "$(find "$STEAM/userdata/222/config/grid" -name '*_hero.jpg' | wc -l)" -eq 10
+check "the artwork was copied" test "$(find "$STEAM/userdata/222/config/grid" -name '*_hero.jpg' | wc -l)" -eq 11
 check "Helium was unpacked and made current" test -x "$PROGRAM/helium/current/helium-wrapper"
+check "LocalSend's port was opened in the firewall" grep -qF '"permanent": {"public": ["53317/tcp", "53317/udp"]}' "$WORK/firewall.json"
 
 echo "==> launch through the link Steam runs"
 : >"$WORK/flatpak.log"
@@ -85,6 +91,7 @@ run "$ROOT/uninstall.sh" --yes >"$WORK/uninstall.log" 2>&1 || {
 check "only the Helium sign-ins remain" test "$(ls "$PROGRAM")" == "profiles"
 check "the shortcuts are gone" test -z "$(shortcut_names 111)$(shortcut_names 222)"
 check "the apps it installed were uninstalled" grep -q '"apps": {}' "$WORK/flatpak.json"
+check "LocalSend's port was closed again" grep -qF '"permanent": {"public": []}' "$WORK/firewall.json"
 
 if ((failed)); then
     echo "==> Sandbox test FAILED"

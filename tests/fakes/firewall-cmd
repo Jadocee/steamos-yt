@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+"""Stand-in for firewall-cmd: keeps zones and their ports in a JSON file and records every call.
+
+FAKE_FIREWALL_STATE  JSON file ({"running", "default", "active": [zone], "runtime"/"permanent": {zone: [port]}});
+                     without it, firewalld is not running
+FAKE_FIREWALL_LOG    file that receives one JSON array of arguments per call
+"""
+
+import json
+import os
+import sys
+from pathlib import Path
+
+
+def main(argv):
+    if os.environ.get("FAKE_FIREWALL_LOG"):
+        with open(os.environ["FAKE_FIREWALL_LOG"], "a", encoding="utf-8") as log:
+            log.write(json.dumps(argv) + "\n")
+    path = Path(os.environ.get("FAKE_FIREWALL_STATE", "/nonexistent"))
+    state = json.loads(path.read_text()) if path.is_file() else {"running": False}
+    if not state.get("running"):
+        print("not running")
+        return 252
+    if argv == ["--state"]:
+        print("running")
+        return 0
+    if argv == ["--get-default-zone"]:
+        print(state["default"])
+        return 0
+    if argv == ["--get-active-zones"]:
+        for zone in state.get("active", []):
+            print(f"{zone} (default)" if zone == state["default"] else zone)
+            print("  interfaces: wlan0")
+        return 0
+    zone = next((argument.split("=", 1)[1] for argument in argv if argument.startswith("--zone=")), state["default"])
+    ports = state["permanent" if "--permanent" in argv else "runtime"].setdefault(zone, [])
+    for argument in argv:
+        name, _, port = argument.partition("=")
+        if name == "--query-port":
+            print("yes" if port in ports else "no")
+            return 0 if port in ports else 1
+        if name == "--add-port" and port not in ports:
+            ports.append(port)
+        elif name == "--remove-port" and port in ports:
+            ports.remove(port)
+    path.write_text(json.dumps(state))
+    print("success")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

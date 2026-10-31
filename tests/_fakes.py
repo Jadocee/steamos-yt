@@ -1,4 +1,4 @@
-"""Test doubles: the fake flatpak command and a throwaway home with Steam and a NonSteamApps program folder."""
+"""Test doubles: fake flatpak, firewall-cmd and sudo commands, and a throwaway home with Steam and a NonSteamApps program folder."""
 
 import json
 import os
@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 
 import _paths
-from nonsteamapps import steam
+from nonsteamapps import firewall, steam
 from nonsteamapps.config import Paths
 
 FAKES = Path(__file__).resolve().parent / "fakes"
@@ -29,6 +29,30 @@ class FakeFlatpak:
 
     def apps(self):
         return json.loads(self.state.read_text())["apps"]
+
+
+class FakeFirewall:
+    """firewalld as seen through tests/fakes/firewall-cmd, with tests/fakes/sudo in front of changes."""
+
+    def __init__(self, directory: Path, running: bool = False):
+        self.state = directory / "firewall.json"
+        self.log = directory / "firewall.log"
+        self.env = {"FAKE_FIREWALL_STATE": str(self.state), "FAKE_FIREWALL_LOG": str(self.log)}
+        self.set(running)
+
+    def set(self, running: bool = True, active=("public",)):
+        self.state.write_text(json.dumps({"running": running, "default": "public", "active": list(active), "runtime": {}, "permanent": {}}))
+
+    def ports(self, zone="public", permanent=True):
+        state = json.loads(self.state.read_text())
+        return sorted(state.get("permanent" if permanent else "runtime", {}).get(zone, []))
+
+    def changes(self):
+        lines = self.log.read_text().splitlines() if self.log.exists() else []
+        return [call for call in map(json.loads, lines) if any("-port=" in argument and "query" not in argument for argument in call)]
+
+    def firewall(self):
+        return firewall.Firewall(str(FAKES / "firewall-cmd"), str(FAKES / "sudo"))
 
 
 def make_steam(home: Path, accounts=(ALPHA, BETA)) -> Path:
@@ -80,9 +104,11 @@ def make_legacy(home: Path, root: Path, shared_sign_in: bool = False):
     return first.appid
 
 
-def environment(home: Path, flatpak: FakeFlatpak, extra_path: str = "") -> dict:
+def environment(home: Path, flatpak: FakeFlatpak, extra_path: str = "", wall: "FakeFirewall" = None) -> dict:
     env = {key: value for key, value in os.environ.items() if not key.startswith("XDG_")}
     env.update(flatpak.env, HOME=str(home), NO_COLOR="1", NONSTEAMAPPS_ALLOW_ROOT="1")
+    if wall:
+        env.update(wall.env)
     if extra_path:
         env["PATH"] = f"{extra_path}{os.pathsep}{env.get('PATH', '')}"
     return env

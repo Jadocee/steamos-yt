@@ -29,11 +29,13 @@ class CliTestCase(unittest.TestCase):
         self.paths = _fakes.make_paths(self.home)
         self.fake = _fakes.FakeFlatpak(Path(self.tmp.name), self.preinstalled())
         self.flatpak = cli.Flatpak(self.fake.command)
+        self.wall = _fakes.FakeFirewall(Path(self.tmp.name))
         (Path(self.tmp.name) / "release").mkdir()
         self.helium_archive = _fakes.make_helium_archive(Path(self.tmp.name) / "release")
         patches = [
-            mock.patch.dict(os.environ, _fakes.environment(self.home, self.fake), clear=True),
+            mock.patch.dict(os.environ, _fakes.environment(self.home, self.fake, wall=self.wall), clear=True),
             mock.patch("nonsteamapps.steamclient.running", return_value=False),
+            mock.patch("nonsteamapps.cli._firewall", side_effect=self.wall.firewall),
         ]
         for patch in patches:
             patch.start()
@@ -263,6 +265,50 @@ class LaunchTests(CliTestCase):
     def test_unknown_or_missing_app(self):
         self.assertEqual(self.run_cli("launch", "kodi"), 1)
         self.assertEqual(self.run_cli("launch", "--steam-account", "1"), 1)
+
+
+class FirewallTests(CliTestCase):
+    def test_localsend_gets_its_port_while_installed(self):
+        self.wall.set(running=True)
+        self.install("localsend")
+        for permanent in (True, False):
+            self.assertEqual(self.wall.ports(permanent=permanent), ["53317/tcp", "53317/udp"])
+        self.assertIn("Opened port 53317 (TCP and UDP) in the firewall for LocalSend", self.errors)
+        self.assertEqual(config.Record.load(self.paths.record).opened_ports("localsend"), {"public": ["53317/tcp", "53317/udp"]})
+        changes = len(self.wall.changes())
+        self.install()
+        self.assertEqual(len(self.wall.changes()), changes)
+        self.assertEqual(self.run_cli("doctor"), 0, self.errors)
+        self.assertIn("firewalld running; LocalSend's port 53317 (TCP and UDP) open", self.output)
+        self.assertEqual(self.run_cli("remove", "localsend", "--yes"), 0, self.errors)
+        self.assertEqual((self.wall.ports(), self.wall.ports(permanent=False)), ([], []))
+        self.assertIn("Closed port 53317 (TCP and UDP), which NonSteamApps opened for LocalSend", self.errors)
+
+    def test_nothing_is_opened_without_a_running_firewall_or_for_other_apps(self):
+        self.install("localsend")
+        self.wall.set(running=True)
+        self.install("youtube", "element")
+        self.assertEqual(self.wall.changes(), [])
+        self.assertEqual(self.run_cli("doctor"), 0, self.errors)
+        self.assertIn("LocalSend's port 53317 (TCP and UDP) closed in public; run the installer again to open it", self.output)
+
+    def test_without_sudo_the_commands_to_run_are_shown(self):
+        self.wall.set(running=True, active=("home", "public"))
+        with mock.patch.dict(os.environ, {"FAKE_SUDO_FAIL": "1"}):
+            self.install("localsend")
+        self.assertIn("Could not open port 53317 (TCP and UDP) for LocalSend (sudo: a password is required)", self.errors)
+        self.assertIn("sudo firewall-cmd --permanent --zone=home --add-port=53317/tcp --add-port=53317/udp", self.errors)
+        self.assertIn("sudo firewall-cmd --zone=public --add-port=53317/tcp --add-port=53317/udp", self.errors)
+        self.assertEqual(config.Record.load(self.paths.record).opened_ports("localsend"), {})
+        self.install("localsend")
+        self.assertEqual(self.wall.ports("home"), ["53317/tcp", "53317/udp"])
+        self.assertEqual(self.wall.ports("public"), ["53317/tcp", "53317/udp"])
+
+    def test_keeping_the_app_keeps_its_port(self):
+        self.wall.set(running=True)
+        self.install("localsend")
+        self.assertEqual(self.run_cli("remove", "localsend", "--keep-app", "--yes"), 0, self.errors)
+        self.assertEqual(self.wall.ports(), ["53317/tcp", "53317/udp"])
 
 
 class RemovalTests(CliTestCase):

@@ -1,0 +1,7 @@
+#!/bin/sh
+# Stand-in for sudo: runs the command, or fails as if no password could be given when FAKE_SUDO_FAIL=1.
+if [ "${FAKE_SUDO_FAIL:-0}" = 1 ]; then
+    echo "sudo: a password is required" >&2
+    exit 1
+fi
+exec "$@"

@@ -188,6 +188,11 @@ The owner answered the open questions. Where these answers differ from the text 
 
 16. **Launch environment (bug fix).** SteamOS YT's launcher removed Steam's `LD_PRELOAD` and the Steam Runtime's paths before starting Helium. When Helium returned in item 8, the new launcher did not, and the Helium apps then hung in Game Mode: Steam's loading screen stayed up, and Exit game had no effect. Steam preloads its overlay library into every game it starts, and with it loaded Chromium's sandboxed zygote crashes [11]. Shortcuts with the overlay off still get it. The Flatpak apps were spared, because the library is outside their sandbox. Before every launch, NonSteamApps now removes the overlay library from `LD_PRELOAD`, keeping any other preloaded library. It also restores `LD_LIBRARY_PATH` and `PATH` from Steam's `SYSTEM_LD_LIBRARY_PATH` and `SYSTEM_PATH`. The Helium sandbox stays on.
 
+17. **A collection for the apps (owner request).** Each Steam account gets a library collection, named by `STEAM_COLLECTION` (default "NonSteamApps"), that holds every app NonSteamApps adds.
+    - **Storage:** Steam keeps collections in `userdata/<account>/config/cloudstorage`, in the namespace file that `cloud-storage-namespaces.json` marks as current. It merges them with Steam Cloud's copy by union ("union-collections"). NonSteamApps writes its own entry, `user-collections.nonsteamapps`, in the same shape as Steam ROM Manager [19], while Steam is closed, and leaves every other entry alone.
+    - **Removal:** apps taken out are listed under `removed`, so that the merge does not bring them back. The collection is marked deleted once it is empty, which uninstalling causes.
+    - **Accounts not set up yet:** an account whose collections file does not exist yet is reported and skipped, because creating that file could conflict with Steam's own.
+
 Still open: layouts NonSteamApps designs itself, and Maximum Game Resolution (the rest of migration phase 4).
 
 ## Sources
@@ -210,3 +215,4 @@ Still open: layouts NonSteamApps designs itself, and Maximum Game Resolution (th
 16. [SteamTracking](https://github.com/SteamDatabase/SteamTracking): `ClientExtracted/controller_base/templates`, the Steam client's controller layouts, as of 29 October 2026
 17. [LocalSend README](https://github.com/localsend/localsend#setup), "Setup": incoming TCP and UDP on 53317, and the `firewall-cmd` commands
 18. [Steam Community: "Please include a firewall"](https://steamcommunity.com/app/1675200/discussions/2/3416557114749187579/), on firewalld arriving with SteamOS 3.5
+19. [Steam ROM Manager](https://github.com/SteamGridDB/steam-rom-manager): `src/lib/category-manager.ts`, which writes collections to Steam's cloud storage file

@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from . import __version__, apps, browser, config, controllers, display, legacy, steam, steamclient, timer, ui
+from . import __version__, apps, browser, collection, config, controllers, display, legacy, steam, steamclient, timer, ui
 from .apps import App
 from .config import Paths, Record
 from .firewall import Firewall, FirewallError
@@ -24,6 +24,8 @@ HELIUM_SERVICES = "HELIUM_SERVICES"
 TV_SCALE = "TV_SCALE"
 HELIUM_SCALE = "HELIUM_SCALE"
 GAME_MODE_SANDBOX = "GAME_MODE_SANDBOX"
+COLLECTION = "STEAM_COLLECTION"
+DEFAULT_COLLECTION = "NonSteamApps"
 RESOLUTION_HINT = "⚙ ▸ Properties ▸ Shortcut ▸ Maximum Game Resolution ▸ Native"
 
 
@@ -175,6 +177,11 @@ def _link(paths: Paths, app: App) -> None:
     link.symlink_to(target)
 
 
+def _collection_name(paths: Paths) -> str:
+    """The collection the apps go in; empty for none."""
+    return config.read_settings(paths.settings).get(COLLECTION, DEFAULT_COLLECTION).strip()
+
+
 def steam_add(paths: Paths, chosen: Sequence[App], user: str = "all", restart: bool = True) -> None:
     root = _steam_root()
     if root is None:
@@ -187,16 +194,32 @@ def steam_add(paths: Paths, chosen: Sequence[App], user: str = "all", restart: b
     ui.log(f"Adding {_listing(chosen)} to your Steam library")
     names = steam.account_names(root)
     layouts: Dict[str, Dict[str, str]] = {}
+    added: Dict[int, List[int]] = {}
+    name = _collection_name(paths)
     with steamclient.closed(f"{paths.launcher} steam add", restart):
         for app in chosen:
             artwork = steam.collect_artwork(paths.artwork(app.id))
             logo = steam.LogoPosition.parse(app.logo_position)
             for result in steam.add_shortcut(root, accounts, _spec(paths, app), artwork, logo, rename=False):
                 ui.ok(_report(result, "added" if result.created else "updated", names))
+                added.setdefault(result.account, []).append(result.appid)
                 if app.controller:
                     if app.controller not in layouts:
                         layouts[app.controller] = controllers.find_templates(root, app.controller)
                     controllers.assign(root, result.account, result.name, layouts[app.controller])
+        waiting = []
+        for account, appids in added.items():
+            path = collection.storage_file(root, account)
+            if path is None:
+                waiting.append(names.get(account, str(account)))
+            elif name:
+                collection.update(path, name, add=appids)
+            else:
+                collection.delete(path)
+    if name and len(waiting) < len(added):
+        ui.ok(f'Put {_listing(chosen)} in the "{name}" collection')
+    if name and waiting:
+        ui.info(f"Steam has not set up collections for {', '.join(waiting)} yet; open Steam with that account once, then run: {paths.launcher} steam add")
     for title, found in layouts.items():
         if found:
             ui.ok(f"Gave {_listing([app for app in chosen if app.controller == title])} Steam's {title} controller layout")
@@ -213,10 +236,14 @@ def steam_remove(paths: Paths, chosen: Sequence[App], user: str = "all", restart
     if not present:
         return
     names = steam.account_names(root)
+    name = _collection_name(paths) or DEFAULT_COLLECTION
     with steamclient.closed(f"{paths.launcher} steam remove", restart):
         for app in present:
             for result in steam.remove_shortcut(root, accounts, str(paths.app_link(app.id))):
                 ui.ok(_report(result, "removed", names))
+                path = collection.storage_file(root, result.account)
+                if path is not None:
+                    collection.update(path, name, remove=[result.appid])
                 if app.controller:
                     controllers.release(root, result.account, result.name)
 

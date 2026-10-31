@@ -42,7 +42,22 @@ print(" ".join(sorted(entry.get("AppName") for entry in entries)))
 EOF
 }
 
+collection_size() {
+    python3 -I - "$ROOT/src/lib" "$STEAM" "$1" <<'EOF'
+import sys
+sys.path.insert(0, sys.argv[1])
+from pathlib import Path
+from nonsteamapps import collection
+print(len(collection.members(collection.storage_file(Path(sys.argv[2]), int(sys.argv[3])))))
+EOF
+}
+
 mkdir -p "$WORK/bin" "$STEAM/userdata/111/config" "$STEAM/userdata/222/config" "$STEAM/config"
+for account in 111 222; do
+    mkdir -p "$STEAM/userdata/$account/config/cloudstorage"
+    echo '[[1,"798"]]' >"$STEAM/userdata/$account/config/cloudstorage/cloud-storage-namespaces.json"
+    echo '[]' >"$STEAM/userdata/$account/config/cloudstorage/cloud-storage-namespace-1.json"
+done
 ln -s "$ROOT/tests/fakes/flatpak" "$WORK/bin/flatpak"
 ln -s "$ROOT/tests/fakes/firewall-cmd" "$WORK/bin/firewall-cmd"
 ln -s "$ROOT/tests/fakes/sudo" "$WORK/bin/sudo"
@@ -64,6 +79,7 @@ check "every app has a link to the launcher" test "$(find "$PROGRAM/apps" -type 
 check "both accounts list every app" test "$(shortcut_names 111)|$(shortcut_names 222)" == "$everything|$everything"
 check "the artwork was copied" test "$(find "$STEAM/userdata/222/config/grid" -name '*_hero.jpg' | wc -l)" -eq 11
 check "Helium was unpacked and made current" test -x "$PROGRAM/helium/current/helium-wrapper"
+check "both accounts have every app in the NonSteamApps collection" test "$(collection_size 111) $(collection_size 222)" == "11 11"
 check "LocalSend's port was opened in the firewall" grep -qF '"permanent": {"public": ["53317/tcp", "53317/udp"]}' "$WORK/firewall.json"
 
 echo "==> launch through the link Steam runs"
@@ -93,6 +109,7 @@ run "$ROOT/uninstall.sh" --yes >"$WORK/uninstall.log" 2>&1 || {
 check "only the Helium sign-ins remain" test "$(ls "$PROGRAM")" == "profiles"
 check "the shortcuts are gone" test -z "$(shortcut_names 111)$(shortcut_names 222)"
 check "the apps it installed were uninstalled" grep -q '"apps": {}' "$WORK/flatpak.json"
+check "the collection was removed" test "$(collection_size 111) $(collection_size 222)" == "0 0"
 check "LocalSend's port was closed again" grep -qF '"permanent": {"public": []}' "$WORK/firewall.json"
 
 if ((failed)); then
